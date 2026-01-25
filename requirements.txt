@@ -1,5 +1,5 @@
 streamlit
 numpy
-sympy
-pandas
 matplotlib
+scipy
+sympy
