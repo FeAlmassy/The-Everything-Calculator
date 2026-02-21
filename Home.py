@@ -130,7 +130,7 @@ st.markdown(
 # ------------------------------------------------------------
 # 4) GRID DE FUNCIONALIDADES (O QUE DÁ PRA FAZER?)
 # ------------------------------------------------------------
-st.markdown("### 🛠️ Módulos de Engenharia")
+st.markdown("### 🛠️ Módulos de Matemática")
 c1, c2, c3 = st.columns(3)
 
 with c1:
@@ -184,13 +184,12 @@ with col_road:
     st.markdown(
         """
         Atualmente em fase de expansão de bibliotecas:
-        - ✅ **v1.0:** Motor de Integração e Log-Log.
-        - 🔄 **v1.1:** Solucionador de EDOs (Runge-Kutta 4ª Ordem).
-        - 📅 **v1.2:** Módulo de Álgebra Linear e Sistemas Dinâmicos.
-        - 📅 **v1.3:** Otimização Não-Linear e Algoritmos Genéticos.
+        - ✅ **v1.0:** Módulo de Integração Numérica.
+        - 🔄 **v1.1:** Módulo de Álgebra Linear.
+        - 📅 **v1.2:** Módulo de Equações Diferenciais e Sistemas Dinâmicos.
+        - 📅 **v1.3:** Otimização Não-Linear e Pesquisa Operacional
         """
     )
-    st.info("**Filosofia do TEC:** Rigor matemático acima da velocidade simples. A verdade numérica é o objetivo.")
 
 with col_syntax:
     st.markdown("### ⌨️ Guia de Sintaxe (SymPy)")
@@ -215,8 +214,8 @@ with inf_left:
     st.write(
         """
         O **The Everything Calculator (TEC)** nasceu da necessidade de uma ferramenta que não apenas calculasse, 
-        mas que ensinasse sobre a estabilidade dos algoritmos. O projeto foca em fornecer uma interface 
-        institucional e limpa para problemas complexos de engenharia e matemática.
+        mas que ensinasse sobre os modelos. O projeto foca em fornecer uma interface 
+        limpa e simples para problemas complexos de engenharia e matemática.
         """
     )
     st.markdown(
@@ -250,7 +249,7 @@ st.markdown(
     """
     <div class='footer'>
         <strong>TEC Engine v1.0.4</strong> — The Everything Calculator<br>
-        Fellipe Almässy • 2026 • Engenharia & Análise Numérica
+        Fellipe Almässy • 2026 • 
     </div>
     """,
     unsafe_allow_html=True
@@ -261,3 +260,4 @@ st.sidebar.title("Navegação")
 st.sidebar.info("Acesse os módulos através do menu acima para iniciar as análises.")
 st.sidebar.markdown("---")
 st.sidebar.caption("Sincronizado com: SymPy 1.12 | NumPy 1.26")
+
