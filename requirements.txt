@@ -1,5 +1,5 @@
-import streamlit as st
-import numpy as np
-import sympy as sp
-import plotly.graph_objects as go
-from scipy.integrate import quad
+streamlit
+numpy
+sympy
+plotly
+scipy
