@@ -675,8 +675,28 @@ with tab_1d:
         "Non-smooth": "Abs(x)",
         "Exponential": "exp(-x**2)",
     }
-    ex1 = st.sidebar.selectbox("Quick examples (1D)", list(examples_1d.keys()), index=0)
-    expr_1d = st.sidebar.text_input("f(x) (SymPy syntax)", value=examples_1d[ex1], key="expr_1d")
+    # --- Sync selectbox -> text_input (1D) ---
+
+if "ex1d" not in st.session_state:
+    st.session_state.ex1d = "Smooth (default)"
+
+if "expr_1d" not in st.session_state:
+    st.session_state.expr_1d = examples_1d[st.session_state.ex1d]
+
+def _apply_example_1d():
+    st.session_state.expr_1d = examples_1d[st.session_state.ex1d]
+
+st.sidebar.selectbox(
+    "Quick examples (1D)",
+    list(examples_1d.keys()),
+    key="ex1d",
+    on_change=_apply_example_1d,
+)
+
+expr_1d = st.sidebar.text_input(
+    "f(x) (SymPy syntax)",
+    key="expr_1d",
+)
 
     colA, colB = st.sidebar.columns(2)
     a = colA.number_input("a", value=-2.0, format="%.6f", key="a_1d")
@@ -795,8 +815,26 @@ with tab_2d:
         "Oscillatory": "sin(10*x)*cos(10*y)",
         "Mixed": "exp(-x**2)*sin(y)",
     }
-    ex2 = st.sidebar.selectbox("Quick examples (2D)", list(examples_2d.keys()), index=0)
-    expr_2d = st.sidebar.text_input("f(x,y) (SymPy syntax)", value=examples_2d[ex2], key="expr_2d")
+    # --- 2D quick examples (sync selectbox -> text_input) ---
+if "ex2d" not in st.session_state:
+    st.session_state.ex2d = "Gaussian bump"
+if "expr_2d" not in st.session_state:
+    st.session_state.expr_2d = examples_2d[st.session_state.ex2d]
+
+def _apply_example_2d():
+    st.session_state.expr_2d = examples_2d[st.session_state.ex2d]
+
+st.sidebar.selectbox(
+    "Quick examples (2D)",
+    list(examples_2d.keys()),
+    key="ex2d",
+    on_change=_apply_example_2d,
+)
+
+expr_2d = st.sidebar.text_input(
+    "f(x,y) (SymPy syntax)",
+    key="expr_2d",
+)
 
     st.sidebar.markdown("**Domain**  \\([a,b]\\times[c,d]\\)")
     c1, c2 = st.sidebar.columns(2)
