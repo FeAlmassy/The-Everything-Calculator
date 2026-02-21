@@ -44,11 +44,19 @@ st.markdown(
 
 .main { background-color: var(--bg); }
 section[data-testid="stSidebar"] { background-color: #0b1020; border-right: 1px solid var(--border); }
-div[data-testid="stMetric"]{
+
+/* Estilo para os cards de métricas e o novo card de LaTeX */
+div[data-testid="stMetric"], .function-card {
   background: linear-gradient(180deg, rgba(255,255,255,0.045), rgba(255,255,255,0.018));
   border: 1px solid rgba(255,255,255,0.06);
   border-radius: 14px;
   padding: 14px;
+}
+
+.function-label {
+    color: var(--muted);
+    font-size: 0.8rem;
+    margin-bottom: 8px;
 }
 
 .hr {
@@ -486,17 +494,26 @@ primary_val = float(df[df["Método"] == nome_metodo]["Aproximação"].iloc[0])
 
 
 # ----------------------------
-# 11) FAIXA DE MÉTRICAS (MODIFICADA)
+# 11) FAIXA DE MÉTRICAS (COM NOVO QUADRADO DE FUNÇÃO)
 # ----------------------------
-m1, m2, m3, m4, m5 = st.columns([1.2, 1.1, 1.1, 1.0, 1.0])
+# Aumentei para 6 colunas para caber o novo card de LaTeX
+m0, m1, m2, m3, m4, m5 = st.columns([1.5, 1.2, 1.1, 1.1, 1.0, 1.0])
 
-# Alterado para dx
+# Card Customizado para a Função em LaTeX
+with m0:
+    st.markdown(f"""
+    <div class="function-card">
+        <div class="function-label">Função Integrada</div>
+    </div>
+    """, unsafe_allow_html=True)
+    # O comando LaTeX é colocado "em cima" do card para herdar o visual
+    st.latex(sp.latex(expr))
+
+# Restante das Métricas que você já tinha
 m1.metric("Aprox. Principal", f"{primary_val:.8f}", f"dx = {h:.6g}")
 
 if ref_val is not None:
-    # Alterado para texto e valor do erro do scipy
     m2.metric("SciPy quad", f"{ref_val:.8f}", f"erro aproximado: {ref_err:.2e}")
-    # Erro absoluto simplificado para 4 casas decimais
     abs_err = abs(ref_val - primary_val)
     m3.metric("Erro Absoluto", f"{abs_err:.4e}", delta_color="inverse")
 else:
