@@ -24,7 +24,7 @@ from scipy.integrate import quad
 # ----------------------------
 # 0) CONFIGURAÇÃO DA PÁGINA (DEVE SER A PRIMEIRA)
 # ----------------------------
-st.set_page_config(page_title="Motor de Integração", layout="wide")
+st.set_page_config(page_title="Integrais Indefinidas", layout="wide")
 
 
 # ----------------------------
@@ -193,11 +193,11 @@ def series_convergencia(expr_str: str, a: float, b: float, nome_metodo: str, n_m
 # 4) PAINEL TEÓRICO
 # ----------------------------
 def theory_panel():
-    st.markdown("## 📘 Fundamentos Matemáticos")
+    st.markdown("##Teoria Explicada")
     st.markdown(
-        "<span class='badge'>Quadratura</span> "
+        "<span class='badge'>Tipos de apoximação</span> "
         "<span class='badge'>Ordens de Erro</span> "
-        "<span class='badge'>Diagnóstico Log-Log</span>",
+        "<span class='badge'>Log-Log</span>",
         unsafe_allow_html=True,
     )
 
@@ -397,8 +397,8 @@ def make_convergence_plot(expr_str: str, a: float, b: float, nome_metodo: str, n
 # ----------------------------
 # 6) CABEÇALHO
 # ----------------------------
-st.title("Motor de Integração")
-st.caption("Métodos Numéricos • Diagnósticos de Convergência • Precisão e Perfilamento")
+st.title("Integrais Indefinidas")
+st.caption("Métodos Numéricos e Teoria Explicada")
 st.markdown("<div class='hr'></div>", unsafe_allow_html=True)
 
 theory_panel()
@@ -412,12 +412,12 @@ st.markdown("<div class='hr'></div>", unsafe_allow_html=True)
 st.sidebar.header("Controles")
 
 exemplos = {
-    "Suave (padrão)": "x**2 * sin(x)",
+    "Suave": "x**2 * sin(x)",
     "Oscilatória": "sin(50*x) / (1 + x**2)",
-    "Não-suave": "Abs(x)",
+    "Mod": "Abs(x)",
     "Exponencial": "exp(-x**2)",
 }
-exemplo_escolhido = st.sidebar.selectbox("Exemplos rápidos", list(exemplos.keys()), index=0)
+exemplo_escolhido = st.sidebar.selectbox("Exemplos rápidos", list(exemplos.keys()), index=3)
 default_expr = exemplos[exemplo_escolhido]
 
 expr_str = st.sidebar.text_input("f(x) (Sintaxe SymPy)", value=default_expr)
@@ -435,7 +435,7 @@ if a > b:
 
 nome_metodo = st.sidebar.selectbox("Método principal", list(METODOS.keys()), index=2)
 
-n = st.sidebar.slider("Refinamento (n partições)", 10, 4000, 400, step=10)
+n = st.sidebar.slider("Quantidade de partições", 10, 4000, 400, step=10)
 show_rectangles = st.sidebar.checkbox("Mostrar barras de partição", value=True)
 
 st.sidebar.markdown("---")
@@ -549,4 +549,4 @@ with tab_diag:
 # ----------------------------
 # 13) RODAPÉ
 # ----------------------------
-st.markdown("<div class='footer'>Unconventional Analysis Group - Fellipe Almassy • </div>", unsafe_allow_html=True)
+st.markdown("<div class='footer'>The Everything Calculator - Fellipe Almässy • </div>", unsafe_allow_html=True)
