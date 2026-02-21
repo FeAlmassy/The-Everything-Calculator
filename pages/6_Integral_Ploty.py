@@ -17,6 +17,128 @@ import streamlit as st
 import plotly.graph_objects as go
 from scipy.integrate import quad
 
+st.markdown("## 📘 Numerical Integration Theory")
+
+with st.expander("Click to view mathematical formulation of each method", expanded=False):
+
+    st.markdown("### 1️⃣ Riemann Sum (Left / Right)")
+
+    st.latex(r"""
+    \int_a^b f(x)\,dx \approx \sum_{i=0}^{n-1} f(x_i)\,\Delta x
+    """)
+
+    st.markdown("""
+- Approximates the area using rectangles.
+- Left Riemann uses the left endpoint of each subinterval.
+- Right Riemann uses the right endpoint.
+- Global error order:  
+    **O(h)**  
+- Convergence is linear.
+""")
+
+    st.markdown("---")
+
+    st.markdown("### 2️⃣ Midpoint Rule")
+
+    st.latex(r"""
+    \int_a^b f(x)\,dx \approx \sum_{i=0}^{n-1} f\left(x_i + \frac{\Delta x}{2}\right)\Delta x
+    """)
+
+    st.markdown("""
+- Uses midpoint of each interval.
+- Cancels first-order error term.
+- Global error order:  
+    **O(h²)**
+- Typically much more accurate than basic Riemann.
+""")
+
+    st.markdown("---")
+
+    st.markdown("### 3️⃣ Trapezoidal Rule")
+
+    st.latex(r"""
+    \int_a^b f(x)\,dx \approx 
+    \frac{\Delta x}{2}\left[f(x_0) + 2\sum_{i=1}^{n-1} f(x_i) + f(x_n)\right]
+    """)
+
+    st.markdown("""
+- Approximates area using trapezoids instead of rectangles.
+- Linear interpolation between points.
+- Global error order:  
+    **O(h²)**
+- Frequently used in numerical finance and signal processing.
+""")
+
+    st.markdown("---")
+
+    st.markdown("### 4️⃣ Simpson’s Rule")
+
+    st.latex(r"""
+    \int_a^b f(x)\,dx \approx 
+    \frac{\Delta x}{3}
+    \left[
+    f(x_0) + 4\sum_{i=1,\,\text{odd}}^{n-1} f(x_i)
+    + 2\sum_{i=2,\,\text{even}}^{n-2} f(x_i)
+    + f(x_n)
+    \right]
+    """)
+
+    st.markdown("""
+- Uses quadratic interpolation (parabolic arcs).
+- Requires even number of intervals.
+- Global error order:  
+    **O(h⁴)**
+- Very high precision for smooth functions.
+- Widely used in scientific computing.
+""")
+
+    st.markdown("---")
+
+    st.markdown("### 5️⃣ Monte Carlo Integration (Optional Extension)")
+
+    st.latex(r"""
+    \int_a^b f(x)\,dx \approx 
+    (b-a)\,\frac{1}{N}\sum_{i=1}^{N} f(X_i)
+    """)
+
+    st.markdown("""
+- Uses random sampling.
+- Convergence rate:
+  
+  **O(N^{-1/2})**
+  
+- Dimension-independent convergence.
+- Fundamental in quantitative finance (option pricing, risk simulation).
+""")
+
+    st.markdown("---")
+
+    st.markdown("""
+### 📊 Error Scaling Insight
+
+If the error behaves like:
+
+""")
+
+    st.latex(r"""
+    \text{Error} \sim C\,h^p
+    """)
+
+    st.markdown("""
+Then in log-log scale:
+
+""")
+
+    st.latex(r"""
+    \log(\text{Error}) = p \log(h) + \log(C)
+    """)
+
+    st.markdown("""
+The slope of the log-log plot estimates the convergence order **p**.
+
+This is why the convergence diagnostics section is mathematically meaningful.
+""")
+
 # ----------------------------
 # 1) PAGE / THEME
 # ----------------------------
@@ -367,3 +489,4 @@ elif show_convergence and (res_real is None):
 # 10) FOOTER
 # ----------------------------
 st.markdown("<div class='footer'>Unconventional Analysis Group • Quantitative Research Division</div>", unsafe_allow_html=True)
+
