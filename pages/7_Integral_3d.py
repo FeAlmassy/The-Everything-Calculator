@@ -193,7 +193,7 @@ def series_convergencia(expr_str: str, a: float, b: float, nome_metodo: str, n_m
 # 4) PAINEL TEÓRICO
 # ----------------------------
 def theory_panel():
-    st.markdown("###Teoria Explicada")
+    st.markdown("### Teoria Explicada")
     st.markdown(
         "<span class='badge'>Tipos de apoximação</span> "
         "<span class='badge'>Ordens de Erro</span> "
