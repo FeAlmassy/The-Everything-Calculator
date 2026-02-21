@@ -152,17 +152,17 @@ def midpoint_2d(fxy: Callable[[np.ndarray, np.ndarray], np.ndarray], ax: float, 
     return float(np.nansum(Z) * hx * hy)
 
 
-def trapezoidal_2d(fxy: Callable[[np.ndarray, np.ndarray], np.ndarray], ax: float, bx: float, ay: float, by: float, nx: int, ny: int) -> float:
-    # product trapezoid: trapz over y then x
+def trapezoidal_2d(fxy, ax, bx, ay, by, nx, ny):
+    # product trapezoid: trapezoid over y then x
     x = np.linspace(ax, bx, nx + 1)
     y = np.linspace(ay, by, ny + 1)
     X, Y = np.meshgrid(x, y, indexing="xy")
     Z = fxy(X, Y)
     Z = _sanitize_array(Z)
 
-    # integrate along y then x
-    Iy = np.trapz(Z, y, axis=0)
-    Ixy = np.trapz(Iy, x)
+    # ✅ NumPy novo: use trapezoid (trapz foi removido)
+    Iy = np.trapezoid(Z, y, axis=0)     # integrate along y
+    Ixy = np.trapezoid(Iy, x, axis=0)   # then along x
     return float(Ixy)
 
 
