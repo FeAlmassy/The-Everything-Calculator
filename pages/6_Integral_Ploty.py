@@ -4,7 +4,7 @@
 # - Robust SymPy parsing + NumPy lambdify
 # - Multiple quadrature methods
 # - SciPy quad reference when available
-# - Convergence diagnostics + observed order estimation
+# - Convergence diagnostics + observed order estimation (log-log safe)
 # - Cached computations for performance
 # - Clean UI architecture (tabs) + institutional styling
 
@@ -133,6 +133,22 @@ def build_xcurve(a: float, b: float, points: int = 1400) -> np.ndarray:
     return np.linspace(a - pad, b + pad, points)
 
 
+# ✅ IMPORTANT FIX:
+# st.cache_data cannot pickle lambdify callables. Use st.cache_resource for parsing.
+@st.cache_resource(show_spinner=False)
+def parse_function(expr_str: str):
+    x_sym = sp.Symbol("x", real=True)
+    locals_map = {
+        "x": x_sym,
+        "sin": sp.sin, "cos": sp.cos, "tan": sp.tan,
+        "exp": sp.exp, "log": sp.log, "sqrt": sp.sqrt,
+        "Abs": sp.Abs, "abs": sp.Abs, "pi": sp.pi,
+    }
+    expr = sp.sympify(expr_str, locals=locals_map)
+    f_num = sp.lambdify(x_sym, expr, modules=["numpy"])
+    return expr, f_num
+
+
 @st.cache_data(show_spinner=False)
 def safe_eval_curve(expr_str: str, a: float, b: float, points: int = 1400) -> Tuple[np.ndarray, np.ndarray]:
     """
@@ -155,7 +171,7 @@ def safe_eval_curve(expr_str: str, a: float, b: float, points: int = 1400) -> Tu
 @st.cache_data(show_spinner=False)
 def compute_reference_quad(expr_str: str, a: float, b: float, max_subdiv: int = 200) -> Tuple[Optional[float], Optional[float]]:
     try:
-        expr, f_num = parse_function(expr_str)
+        _, f_num = parse_function(expr_str)
         val, err = quad(lambda t: float(f_num(t)), a, b, limit=max_subdiv)
         return float(val), float(err)
     except Exception:
@@ -164,7 +180,7 @@ def compute_reference_quad(expr_str: str, a: float, b: float, max_subdiv: int = 
 
 @st.cache_data(show_spinner=False)
 def convergence_series(expr_str: str, a: float, b: float, method_name: str, n_max: int, step: int) -> Tuple[np.ndarray, np.ndarray]:
-    expr, f_num = parse_function(expr_str)
+    _, f_num = parse_function(expr_str)
     ref, _ = compute_reference_quad(expr_str, a, b)
     if ref is None:
         return np.array([], dtype=int), np.array([], dtype=float)
@@ -177,22 +193,6 @@ def convergence_series(expr_str: str, a: float, b: float, method_name: str, n_ma
         v = fn(f_num, a, b, int(nn))
         errs.append(abs(ref - v))
     return ns, np.array(errs, dtype=float)
-
-
-# ✅ IMPORTANT FIX:
-# st.cache_data cannot pickle lambdify callables. Use st.cache_resource.
-@st.cache_resource(show_spinner=False)
-def parse_function(expr_str: str):
-    x_sym = sp.Symbol("x", real=True)
-    locals_map = {
-        "x": x_sym,
-        "sin": sp.sin, "cos": sp.cos, "tan": sp.tan,
-        "exp": sp.exp, "log": sp.log, "sqrt": sp.sqrt,
-        "Abs": sp.Abs, "abs": sp.Abs, "pi": sp.pi,
-    }
-    expr = sp.sympify(expr_str, locals=locals_map)
-    f_num = sp.lambdify(x_sym, expr, modules=["numpy"])
-    return expr, f_num
 
 
 # ----------------------------
@@ -349,17 +349,21 @@ def make_main_plot(expr_str: str, expr: sp.Expr, f_num, a: float, b: float, n: i
 
 
 def estimate_observed_order(ns: np.ndarray, errs: np.ndarray, a: float, b: float) -> Optional[float]:
+    # Fit log(err) = alpha + p log(h), where h = (b-a)/n
     if len(ns) < 5:
         return None
-    eps = 1e-300
+
+    eps = 1e-300  # ✅ log-safe
     h = (b - a) / ns.astype(float)
     y = np.log(np.maximum(errs, eps))
     x = np.log(h)
+
     mask = np.isfinite(x) & np.isfinite(y)
     x = x[mask]
     y = y[mask]
     if len(x) < 5:
         return None
+
     p = np.polyfit(x, y, 1)[0]
     return float(p)
 
@@ -369,9 +373,15 @@ def make_convergence_plot(expr_str: str, a: float, b: float, method_name: str, n
     if ns.size == 0:
         return None, None, ns, errs
 
+    # ✅ FIX: log-log cannot plot zeros. Clamp for plotting and order estimation.
+    eps = 1e-300
+    errs_plot = np.array(errs, dtype=float)
+    if loglog:
+        errs_plot = np.maximum(errs_plot, eps)
+
     fig = go.Figure()
     fig.add_trace(go.Scatter(
-        x=ns, y=errs,
+        x=ns, y=errs_plot,
         mode="lines",
         name=f"Error ({method_name})",
         hovertemplate="n=%{x}<br>err=%{y:.3e}<extra></extra>",
@@ -385,13 +395,14 @@ def make_convergence_plot(expr_str: str, a: float, b: float, method_name: str, n
         yaxis_title="Absolute Error",
         transition=dict(duration=450),
     )
+
     if loglog:
         fig.update_layout(xaxis_type="log", yaxis_type="log")
 
     fig.update_xaxes(showgrid=True, gridcolor="rgba(255,255,255,0.06)")
     fig.update_yaxes(showgrid=True, gridcolor="rgba(255,255,255,0.06)")
 
-    p_obs = estimate_observed_order(ns, errs, a, b)
+    p_obs = estimate_observed_order(ns, np.maximum(errs, eps), a, b)
     return fig, p_obs, ns, errs
 
 
@@ -455,7 +466,7 @@ st.sidebar.caption("Note: hard discontinuities may break quad and distort conver
 try:
     expr, f_num = parse_function(expr_str)
     test = f_num(np.array([a, (a + b) / 2, b], dtype=float))
-    test = np.array(test, dtype=float)
+    _ = np.array(test, dtype=float)
 except Exception as e:
     st.error(f"Invalid function. Parsing/evaluation failed: {e}")
     st.stop()
@@ -531,7 +542,7 @@ with tab_diag:
             c1, c2, c3 = st.columns(3)
 
             if p_obs is not None:
-                c1.metric("Observed order (slope)", f"{p_obs:.3f}", "from log(err) vs log(h)")
+                c1.metric("Observed order (slope)", f"{p_obs:.3f}", "log(err) vs log(h)")
             else:
                 c1.metric("Observed order (slope)", "n/a", "insufficient data")
 
