@@ -486,14 +486,19 @@ primary_val = float(df[df["Método"] == nome_metodo]["Aproximação"].iloc[0])
 
 
 # ----------------------------
-# 11) FAIXA DE MÉTRICAS
+# 11) FAIXA DE MÉTRICAS (MODIFICADA)
 # ----------------------------
 m1, m2, m3, m4, m5 = st.columns([1.2, 1.1, 1.1, 1.0, 1.0])
 
-m1.metric("Aprox. Principal", f"{primary_val:.8f}", f"h = {h:.6g}")
+# Alterado para dx
+m1.metric("Aprox. Principal", f"{primary_val:.8f}", f"dx = {h:.6g}")
+
 if ref_val is not None:
-    m2.metric("SciPy quad", f"{ref_val:.8f}", f"± {ref_err:.2e}")
-    m3.metric("Erro Absoluto", f"{abs(ref_val - primary_val):.6e}", delta_color="inverse")
+    # Alterado para texto e valor do erro do scipy
+    m2.metric("SciPy quad", f"{ref_val:.8f}", f"erro aproximado: {ref_err:.2e}")
+    # Erro absoluto simplificado para 4 casas decimais
+    abs_err = abs(ref_val - primary_val)
+    m3.metric("Erro Absoluto", f"{abs_err:.4e}", delta_color="inverse")
 else:
     m2.metric("SciPy quad", "n/a", "ref. indisponível")
     m3.metric("Erro Absoluto", "n/a", "—")
