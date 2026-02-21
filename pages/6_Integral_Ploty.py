@@ -24,7 +24,7 @@ from scipy.integrate import quad
 # ----------------------------
 # 0) PAGE CONFIG (MUST BE FIRST)
 # ----------------------------
-st.set_page_config(page_title="Quant Integration Engine", layout="wide")
+st.set_page_config(page_title="Integration Engine", layout="wide")
 
 
 # ----------------------------
@@ -561,4 +561,5 @@ with tab_diag:
 # ----------------------------
 # 13) FOOTER
 # ----------------------------
-st.markdown("<div class='footer'>Unconventional Analysis Group • Quantitative Research Division</div>", unsafe_allow_html=True)
+st.markdown("<div class='footer'>Unconventional Analysis Group - Fellipe Almassy • </div>", unsafe_allow_html=True)
+
