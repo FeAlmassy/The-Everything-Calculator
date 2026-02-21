@@ -17,126 +17,280 @@ import streamlit as st
 import plotly.graph_objects as go
 from scipy.integrate import quad
 
-st.markdown("## 📘 Numerical Integration Theory")
+st.markdown("## 📘 Mathematical Foundations of Numerical Integration")
 
-with st.expander("Click to view mathematical formulation of each method", expanded=False):
+with st.expander("Full theoretical background — methods, derivations, examples and error analysis", expanded=False):
 
-    st.markdown("### 1️⃣ Riemann Sum (Left / Right)")
+    st.markdown("""
+Numerical integration (quadrature) aims to approximate a definite integral
+
+""")
+
+    st.latex(r"\int_a^b f(x)\,dx")
+
+    st.markdown("""
+when a closed-form antiderivative is unavailable or computationally impractical.
+
+All classical deterministic methods rely on the same structural idea:
+
+> Partition the interval [a, b] into n subintervals of width  
+""")
+
+    st.latex(r"\Delta x = \frac{b-a}{n}")
+
+    st.markdown("""
+and approximate the function locally by a simpler polynomial.
+
+The quality of the approximation depends on:
+- Smoothness of the function
+- Polynomial degree used locally
+- Step size h = Δx
+""")
+
+    st.markdown("---")
+
+    st.markdown("## 1️⃣ Riemann Sums")
+
+    st.markdown("### Left / Right Riemann")
 
     st.latex(r"""
     \int_a^b f(x)\,dx \approx \sum_{i=0}^{n-1} f(x_i)\,\Delta x
     """)
 
     st.markdown("""
-- Approximates the area using rectangles.
-- Left Riemann uses the left endpoint of each subinterval.
-- Right Riemann uses the right endpoint.
-- Global error order:  
-    **O(h)**  
-- Convergence is linear.
+Interpretation:
+- Each subinterval contributes a rectangle.
+- Height determined by endpoint evaluation.
+- First-order method.
+
+### Error analysis
+
+If f is continuously differentiable:
+
 """)
 
-    st.markdown("---")
-
-    st.markdown("### 2️⃣ Midpoint Rule")
-
     st.latex(r"""
-    \int_a^b f(x)\,dx \approx \sum_{i=0}^{n-1} f\left(x_i + \frac{\Delta x}{2}\right)\Delta x
+    \text{Error} = O(h)
     """)
 
     st.markdown("""
-- Uses midpoint of each interval.
-- Cancels first-order error term.
-- Global error order:  
-    **O(h²)**
-- Typically much more accurate than basic Riemann.
+This means:
+
+If h is divided by 2 → error is approximately divided by 2.
+
+### Example
+
+Let:
+
+""")
+
+    st.latex(r"\int_0^1 x^2 dx = \frac{1}{3}")
+
+    st.markdown("""
+Using n=10 (h=0.1), Riemann Left underestimates because x² is increasing.
+
+This bias is systematic:
+- Increasing function → Left underestimates
+- Decreasing function → Left overestimates
 """)
 
     st.markdown("---")
 
-    st.markdown("### 3️⃣ Trapezoidal Rule")
+    st.markdown("## 2️⃣ Midpoint Rule")
 
     st.latex(r"""
     \int_a^b f(x)\,dx \approx 
-    \frac{\Delta x}{2}\left[f(x_0) + 2\sum_{i=1}^{n-1} f(x_i) + f(x_n)\right]
+    \sum_{i=0}^{n-1} f\left(x_i + \frac{h}{2}\right)h
     """)
 
     st.markdown("""
-- Approximates area using trapezoids instead of rectangles.
-- Linear interpolation between points.
-- Global error order:  
-    **O(h²)**
-- Frequently used in numerical finance and signal processing.
+Why is this better?
+
+Because the first-order Taylor error cancels.
+
+Expanding f around midpoint:
+
+""")
+
+    st.latex(r"""
+    f(x) = f(m_i) + f'(m_i)(x-m_i) + \frac{f''(\xi)}{2}(x-m_i)^2
+    """)
+
+    st.markdown("""
+The linear term integrates to zero over symmetric interval.
+
+Thus:
+
+""")
+
+    st.latex(r"""
+    \text{Error} = O(h^2)
+    """)
+
+    st.markdown("""
+This is quadratic convergence.
+
+If h → h/2  
+Error → roughly 1/4.
 """)
 
     st.markdown("---")
 
-    st.markdown("### 4️⃣ Simpson’s Rule")
+    st.markdown("## 3️⃣ Trapezoidal Rule")
 
     st.latex(r"""
     \int_a^b f(x)\,dx \approx 
-    \frac{\Delta x}{3}
+    \frac{h}{2}\left[f(x_0) + 2\sum_{i=1}^{n-1} f(x_i) + f(x_n)\right]
+    """)
+
+    st.markdown("""
+Interpretation:
+- Linear interpolation between adjacent points.
+- Approximates curve with straight lines.
+
+Error term:
+
+""")
+
+    st.latex(r"""
+    \text{Error} = -\frac{(b-a)}{12} h^2 f''(\xi)
+    """)
+
+    st.markdown("""
+Also O(h²).
+
+In finance:
+- Used in yield curve integration
+- Used in volatility surface approximations
+""")
+
+    st.markdown("---")
+
+    st.markdown("## 4️⃣ Simpson’s Rule")
+
+    st.markdown("Polynomial degree: 2 (quadratic interpolation)")
+
+    st.latex(r"""
+    \int_a^b f(x)\,dx \approx 
+    \frac{h}{3}
     \left[
-    f(x_0) + 4\sum_{i=1,\,\text{odd}}^{n-1} f(x_i)
-    + 2\sum_{i=2,\,\text{even}}^{n-2} f(x_i)
+    f(x_0) + 4\sum_{odd} f(x_i)
+    + 2\sum_{even} f(x_i)
     + f(x_n)
     \right]
     """)
 
     st.markdown("""
-- Uses quadratic interpolation (parabolic arcs).
-- Requires even number of intervals.
-- Global error order:  
-    **O(h⁴)**
-- Very high precision for smooth functions.
-- Widely used in scientific computing.
+Derived from integrating Lagrange quadratic polynomial.
+
+Error term:
+
+""")
+
+    st.latex(r"""
+    \text{Error} = -\frac{(b-a)}{180} h^4 f^{(4)}(\xi)
+    """)
+
+    st.markdown("""
+Fourth-order convergence.
+
+If h → h/2  
+Error → approximately divided by 16.
+
+For smooth functions, extremely accurate.
 """)
 
     st.markdown("---")
 
-    st.markdown("### 5️⃣ Monte Carlo Integration (Optional Extension)")
+    st.markdown("## 5️⃣ Monte Carlo Integration")
 
     st.latex(r"""
     \int_a^b f(x)\,dx \approx 
-    (b-a)\,\frac{1}{N}\sum_{i=1}^{N} f(X_i)
+    (b-a)\frac{1}{N}\sum_{i=1}^N f(X_i)
     """)
 
     st.markdown("""
-- Uses random sampling.
-- Convergence rate:
-  
-  **O(N^{-1/2})**
-  
-- Dimension-independent convergence.
-- Fundamental in quantitative finance (option pricing, risk simulation).
+Where X_i ~ Uniform(a,b).
+
+Key property:
+
+""")
+
+    st.latex(r"""
+    \text{Std Error} \sim \frac{\sigma}{\sqrt{N}}
+    """)
+
+    st.markdown("""
+Convergence rate:
+
+""")
+
+    st.latex(r"O(N^{-1/2})")
+
+    st.markdown("""
+Slower in 1D than Simpson,
+but dimension-independent.
+
+This makes Monte Carlo dominant in high-dimensional problems:
+- Option pricing
+- Risk simulation
+- Stochastic differential equations
 """)
 
     st.markdown("---")
 
+    st.markdown("## 📊 Convergence and Log-Log Analysis")
+
     st.markdown("""
-### 📊 Error Scaling Insight
-
-If the error behaves like:
-
+If error behaves as:
 """)
 
     st.latex(r"""
-    \text{Error} \sim C\,h^p
+    \text{Error} = C h^p
     """)
 
     st.markdown("""
-Then in log-log scale:
-
+Taking logarithms:
 """)
 
     st.latex(r"""
-    \log(\text{Error}) = p \log(h) + \log(C)
+    \log(\text{Error}) = p\log(h) + \log(C)
     """)
 
     st.markdown("""
-The slope of the log-log plot estimates the convergence order **p**.
+Thus in a log-log plot:
 
-This is why the convergence diagnostics section is mathematically meaningful.
+Slope = p (order of convergence)
+
+Expected slopes:
+- Riemann: 1
+- Midpoint: 2
+- Trapezoidal: 2
+- Simpson: 4
+- Monte Carlo: 1/2 (in N scale)
+
+This is why convergence diagnostics in this engine are mathematically meaningful.
+""")
+
+    st.markdown("---")
+
+    st.markdown("## 🧠 Practical Interpretation")
+
+    st.markdown("""
+Choosing a method depends on:
+
+- Smoothness of function
+- Dimensionality
+- Required precision
+- Computational budget
+
+In quantitative finance:
+
+- Low dimension & smooth payoff → Simpson / adaptive quadrature
+- High dimension → Monte Carlo
+- Real-time systems → Trapezoidal / vectorized midpoint
+
+This engine allows empirical verification of theoretical convergence rates.
 """)
 
 # ----------------------------
@@ -489,4 +643,5 @@ elif show_convergence and (res_real is None):
 # 10) FOOTER
 # ----------------------------
 st.markdown("<div class='footer'>Unconventional Analysis Group • Quantitative Research Division</div>", unsafe_allow_html=True)
+
 
