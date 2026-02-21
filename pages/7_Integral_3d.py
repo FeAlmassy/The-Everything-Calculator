@@ -64,6 +64,12 @@ div[data-testid="stMetric"]{
   color: rgba(229,231,235,0.80); font-size: 0.82rem;
 }
 .footer { text-align:center; color: var(--muted2); margin-top: 14px; font-size: 0.85rem; }
+
+/* Destaque para a função no topo */
+.function-display {
+    text-align: center;
+    padding: 1.5rem 0;
+}
 </style>
 """,
     unsafe_allow_html=True,
@@ -328,10 +334,9 @@ def make_main_plot(expr_str: str, expr: sp.Expr, f_num, a: float, b: float, n: i
     fig.update_layout(
         template="plotly_dark",
         hovermode="x unified",
-        margin=dict(l=0, r=0, t=50, b=0),
+        margin=dict(l=0, r=0, t=20, b=0), # Título removido, reduzi a margem superior
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
         transition=dict(duration=450),
-        title=f"f(x) = {sp.sstr(expr)}   |   [{a:.6g}, {b:.6g}]   |   n={n}",
     )
     fig.update_xaxes(showgrid=True, gridcolor="rgba(255,255,255,0.06)")
     fig.update_yaxes(showgrid=True, gridcolor="rgba(255,255,255,0.06)")
@@ -486,17 +491,20 @@ primary_val = float(df[df["Método"] == nome_metodo]["Aproximação"].iloc[0])
 
 
 # ----------------------------
-# 11) FAIXA DE MÉTRICAS (MODIFICADA)
+# 11) DESTAQUE DA FUNÇÃO E MÉTRICAS
 # ----------------------------
+
+# Exibição da função em destaque centralizado acima dos cards
+st.markdown("<div class='function-display'>", unsafe_allow_html=True)
+st.latex(rf"\huge f(x) = {sp.latex(expr)}")
+st.markdown("</div>", unsafe_allow_html=True)
+
 m1, m2, m3, m4, m5 = st.columns([1.2, 1.1, 1.1, 1.0, 1.0])
 
-# Alterado para dx
 m1.metric("Aprox. Principal", f"{primary_val:.8f}", f"dx = {h:.6g}")
 
 if ref_val is not None:
-    # Alterado para texto e valor do erro do scipy
     m2.metric("SciPy quad", f"{ref_val:.8f}", f"erro aproximado: {ref_err:.2e}")
-    # Erro absoluto simplificado para 4 casas decimais
     abs_err = abs(ref_val - primary_val)
     m3.metric("Erro Absoluto", f"{abs_err:.4e}", delta_color="inverse")
 else:
