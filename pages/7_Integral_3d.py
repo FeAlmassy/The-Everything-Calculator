@@ -402,7 +402,7 @@ def make_convergence_plot(expr_str: str, a: float, b: float, nome_metodo: str, n
 # ----------------------------
 # 6) CABEÇALHO
 # ----------------------------
-st.title("Integrais Indefinidas")
+st.title("Integrais Definidas")
 st.caption("Métodos Numéricos e Teoria Explicada")
 st.markdown("<div class='hr'></div>", unsafe_allow_html=True)
 
