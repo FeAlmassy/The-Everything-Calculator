@@ -1,7 +1,5 @@
 # streamlit_app.py
-# TEC — Hurst Exponent (R/S) — Excel Input
-# ------------------------------------------------------------
-# Autor: Gemini para The Everything Calculator
+# TEC — Hurst Exponent (R/S) — Excel Input (Versão Corrigida)
 # ------------------------------------------------------------
 
 from __future__ import annotations
@@ -18,7 +16,7 @@ import streamlit as st
 st.set_page_config(page_title="TEC • Hurst (R/S)", page_icon="📈", layout="wide")
 
 # ----------------------------
-# 1) TEC-STYLE (Clean Dark Theme)
+# 1) TEC-STYLE (CSS CORRIGIDO PARA EVITAR CORTES)
 # ----------------------------
 st.markdown(
     """
@@ -30,25 +28,46 @@ st.markdown(
   --text:rgba(255,255,255,.92);
   --muted:rgba(229,231,235,.60);
   --accent:#FF4B4B;
-  --accent2:#1E90FF;
 }
-.main { background-color: var(--bg); }
-.block-container{ max-width:1250px; padding-top:1.5rem; }
-.card{
+
+/* Ajuste crítico para evitar corte no topo das páginas Streamlit */
+.block-container { 
+    max-width: 1250px; 
+    padding-top: 4rem !important; 
+    padding-bottom: 2rem; 
+}
+
+.card {
   background: var(--panel);
   border: 1px solid var(--stroke);
   border-radius: 16px;
   padding: 1.2rem;
   margin-bottom: 1rem;
 }
-.title{ font-size:1.8rem; font-weight:800; color:var(--text); margin-bottom: 0.2rem; }
-.sub{ color:var(--muted); margin-bottom: 1.5rem; font-size:0.95rem; }
-.small-muted{ color:var(--muted); font-size:0.85rem; }
-.metric-row { display: flex; gap: 20px; margin-bottom: 10px; }
+
+/* Correção de line-height para o título não cortar o topo das letras */
+.title { 
+    font-size: 2.2rem; 
+    font-weight: 800; 
+    color: var(--text); 
+    margin-bottom: 0.5rem;
+    line-height: 1.3; 
+    display: flex;
+    align-items: center;
+    gap: 15px;
+}
+
+.sub { 
+    color: var(--muted); 
+    margin-bottom: 2rem; 
+    font-size: 1rem; 
+    line-height: 1.4;
+}
+
 hr { border:none; border-top:1px solid var(--stroke); margin: 1.5rem 0; }
 
-/* Custom metrics design */
-div[data-testid="stMetric"]{
+/* Estilização das Métricas nativas */
+div[data-testid="stMetric"] {
   background: linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.01));
   border: 1px solid var(--stroke);
   border-radius: 12px;
@@ -59,34 +78,43 @@ div[data-testid="stMetric"]{
     unsafe_allow_html=True,
 )
 
+# ----------------------------
+# 2) HEADER
+# ----------------------------
 st.markdown(
     """
-<div class="title">📈 Hurst Exponent Engine</div>
-<div class="sub">Análise de Rescaled Range (R/S) para detecção de persistência e memória em séries temporais.</div>
+<div class="title">
+    <span>📈</span> Hurst Exponent Engine
+</div>
+<div class="sub">
+    Análise de Rescaled Range (R/S) para detecção de persistência e memória em séries temporais.
+</div>
 """,
     unsafe_allow_html=True,
 )
 
 # ----------------------------
-# 2) CORE ENGINE
+# 3) CORE ENGINE (MATH)
 # ----------------------------
 def dividir_em_blocos(lista, tamanho):
+    """Divide a série em blocos contíguos de tamanho fixo."""
     return [lista[i : i + tamanho] for i in range(0, len(lista), tamanho) if len(lista[i : i + tamanho]) == tamanho]
 
 def metricas_do_bloco(bloco, ddof=1):
+    """Calcula R/S para um único bloco de dados."""
     x = np.array(bloco, dtype=float)
-    mu = float(np.mean(x))
-    S = float(np.std(x, ddof=ddof))
+    mu = np.mean(x)
+    std = np.std(x, ddof=ddof)
     
-    centered = x - mu
-    Y = np.cumsum(centered)
+    # Séries acumulada de desvios (centrada na média)
+    Y = np.cumsum(x - mu)
     
-    R = float(np.max(Y) - np.min(Y))
-    RS = float(R / S) if S != 0 else np.nan
+    R = np.max(Y) - np.min(Y)
+    RS = R / std if std > 0 else np.nan
 
     return {
         "mean": mu,
-        "std": S,
+        "std": std,
         "min_cumsum": np.min(Y),
         "max_cumsum": np.max(Y),
         "R": R,
@@ -94,6 +122,7 @@ def metricas_do_bloco(bloco, ddof=1):
     }
 
 def rs_medio_por_n(serie: List[float], n: int, ddof: int = 1) -> float:
+    """Calcula a média de R/S para todos os blocos de tamanho n."""
     blocos = dividir_em_blocos(serie, n)
     if not blocos: return np.nan
     
@@ -103,108 +132,111 @@ def rs_medio_por_n(serie: List[float], n: int, ddof: int = 1) -> float:
     return float(np.mean(rs_vals)) if rs_vals else np.nan
 
 # ----------------------------
-# 3) SIDEBAR CONTROLS
+# 4) SIDEBAR & INPUT
 # ----------------------------
-st.sidebar.markdown("### 🎛️ Configurações")
-uploaded = st.sidebar.file_uploader("Upload Excel/CSV", type=["xlsx", "xls", "csv"])
+st.sidebar.markdown("### 🎛️ Dados e Escala")
+uploaded = st.sidebar.file_uploader("Upload Excel ou CSV", type=["xlsx", "xls", "csv"])
 
 if uploaded:
     try:
         if uploaded.name.endswith(".csv"): df = pd.read_csv(uploaded)
         else: df = pd.read_excel(uploaded)
         
-        col_target = st.sidebar.selectbox("Coluna Alvo", df.select_dtypes(include=[np.number]).columns)
+        # Selecionar apenas colunas numéricas
+        num_cols = df.select_dtypes(include=[np.number]).columns.tolist()
+        col_target = st.sidebar.selectbox("Coluna para Análise", num_cols)
         serie = df[col_target].dropna().astype(float).tolist()
     except Exception as e:
-        st.sidebar.error(f"Erro no arquivo: {e}")
+        st.sidebar.error(f"Erro ao ler arquivo: {e}")
         st.stop()
 else:
-    # Demo data
-    st.sidebar.info("Utilizando Random Walk para demonstração.")
-    serie = np.cumsum(np.random.randn(1000) + 0.02).tolist()
+    st.sidebar.warning("Aguardando arquivo. Usando dados sintéticos.")
+    serie = np.cumsum(np.random.randn(1000) + 0.01).tolist()
 
 st.sidebar.markdown("---")
-n_table = st.sidebar.number_input("Tamanho do bloco p/ Tabela (n)", 2, 5000, 100)
-min_n = st.sidebar.slider("Min n (Scaling)", 4, 50, 8)
-max_n = st.sidebar.slider("Max n (Scaling)", 100, len(serie)//2, min(512, len(serie)//2))
-points = st.sidebar.slider("Pontos na Regressão", 10, 60, 25)
-spacing = st.sidebar.radio("Espaçamento n", ["log", "linear"])
+n_table = st.sidebar.number_input("Tamanho do bloco (Tabela)", 2, 5000, 100)
+min_n = st.sidebar.slider("Min n (Escalonamento)", 4, 100, 8)
+max_n = st.sidebar.slider("Max n (Escalonamento)", 100, len(serie)//2, min(1024, len(serie)//2))
+spacing = st.sidebar.radio("Distribuição de n", ["log", "linear"])
 
 # ----------------------------
-# 4) COMPUTATION
+# 5) PROCESSAMENTO
 # ----------------------------
 t0 = time.time()
 
-# Tabela detalhada
+# 1. Gerar Tabela de Blocos
 df_blocks = pd.DataFrame([
     {**metricas_do_bloco(b), "block": i+1} 
     for i, b in enumerate(dividir_em_blocos(serie, n_table))
 ])
 
-# Scaling para Hurst
+# 2. Cálculo do Expoente de Hurst (Regressão Log-Log)
 if spacing == "log":
-    ns = np.unique(np.geomspace(min_n, max_n, points).astype(int))
+    ns = np.unique(np.geomspace(min_n, max_n, 25).astype(int))
 else:
-    ns = np.unique(np.linspace(min_n, max_n, points).astype(int))
+    ns = np.unique(np.linspace(min_n, max_n, 25).astype(int))
 
-rs_results = []
+rs_list = []
 for n in ns:
     val = rs_medio_por_n(serie, n)
-    if np.isfinite(val): rs_results.append((n, val))
+    if np.isfinite(val): rs_list.append((n, val))
 
-ns_arr, rs_arr = np.array([x[0] for x in rs_results]), np.array([x[1] for x in rs_results])
-H, a = np.polyfit(np.log(ns_arr), np.log(rs_arr), 1)
+ns_arr = np.array([x[0] for x in rs_list])
+rs_arr = np.array([x[1] for x in rs_list])
+
+# Ajuste linear: log(R/S) = H*log(n) + log(C)
+H, intercept = np.polyfit(np.log(ns_arr), np.log(rs_arr), 1)
 
 dt = time.time() - t0
 
 # ----------------------------
-# 5) MAIN UI LAYOUT
+# 6) DASHBOARD
 # ----------------------------
-# Metrics Row
-m1, m2, m3, m4 = st.columns(4)
-m1.metric("Hurst Exponent (H)", f"{H:.4f}")
-m2.metric("Comportamento", "Persistente" if H > 0.55 else "Anti-persistente" if H < 0.45 else "Random Walk")
-m3.metric("Janelas Analisadas", len(ns_arr))
-m4.metric("Latency", f"{dt*1000:.1f}ms")
 
+# Linha de Métricas
+c1, c2, c3, c4 = st.columns(4)
+c1.metric("Hurst Exponent (H)", f"{H:.4f}")
+c2.metric("Memória", "Persistente" if H > 0.55 else "Anti-persistente" if H < 0.45 else "Aleatória")
+c3.metric("Amostras (n)", len(ns_arr))
+c4.metric("Processamento", f"{dt*1000:.1f}ms")
+
+# Tabela Detalhada
 st.markdown('<div class="card">', unsafe_allow_html=True)
-st.subheader(f"📋 Métricas por Bloco (n = {n_table})")
+st.subheader(f"📋 Detalhamento dos Blocos (n = {n_table})")
 st.dataframe(df_blocks, use_container_width=True, height=250, hide_index=True)
 st.markdown('</div>', unsafe_allow_html=True)
 
-tab_viz, tab_data = st.tabs(["📊 Visualização Fractal", "📄 Dados de Escalonamento"])
+# Gráficos
+tab_viz, tab_data = st.tabs(["📊 Gráficos de Escalonamento", "📄 Dados Brutos"])
 
 with tab_viz:
-    c1, c2 = st.columns(2)
+    g1, g2 = st.columns(2)
     
-    with c1:
+    with g1:
         st.markdown('<div class="card">', unsafe_allow_html=True)
         fig1 = go.Figure()
-        fig1.add_trace(go.Scatter(x=ns_arr, y=rs_arr, mode='lines+markers', name="R/S(n)", marker=dict(color='#1E90FF')))
-        fig1.update_layout(title="R/S vs n (Escala Linear)", template="plotly_dark", height=400, 
-                          margin=dict(l=20,r=20,t=40,b=20), plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)')
+        fig1.add_trace(go.Scatter(x=ns_arr, y=rs_arr, mode='lines+markers', line=dict(color='#1E90FF')))
+        fig1.update_layout(title="R/S vs n (Escala Linear)", template="plotly_dark", height=400,
+                          paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', margin=dict(t=50, b=20))
         st.plotly_chart(fig1, use_container_width=True)
         st.markdown('</div>', unsafe_allow_html=True)
 
-    with c2:
+    with g2:
         st.markdown('<div class="card">', unsafe_allow_html=True)
-        # Log-Log Plot
         lx, ly = np.log(ns_arr), np.log(rs_arr)
         fig2 = go.Figure()
-        fig2.add_trace(go.Scatter(x=lx, y=ly, mode='markers', name="Logs Reais", marker=dict(color='#FF4B4B')))
-        fig2.add_trace(go.Scatter(x=lx, y=a + H*lx, mode='lines', name=f"Fit (Slope={H:.3f})", line=dict(dash='dot', color='white')))
-        fig2.update_layout(title="Log-Log Analysis (Slope = H)", template="plotly_dark", height=400,
-                          margin=dict(l=20,r=20,t=40,b=20), plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)')
+        fig2.add_trace(go.Scatter(x=lx, y=ly, mode='markers', name="Dados", marker=dict(color='#FF4B4B')))
+        fig2.add_trace(go.Scatter(x=lx, y=H*lx + intercept, mode='lines', name=f"H={H:.3f}", line=dict(color='white', dash='dot')))
+        fig2.update_layout(title="Log-Log Plot (Hurst Slope)", template="plotly_dark", height=400,
+                          paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', margin=dict(t=50, b=20))
         st.plotly_chart(fig2, use_container_width=True)
         st.markdown('</div>', unsafe_allow_html=True)
 
 with tab_data:
     st.markdown('<div class="card">', unsafe_allow_html=True)
-    df_scaling = pd.DataFrame({"n": ns_arr, "RS_mean": rs_arr, "log_n": np.log(ns_arr), "log_RS": np.log(rs_arr)})
-    st.dataframe(df_scaling, use_container_width=True, hide_index=True)
+    st.write("Dados utilizados para a regressão linear:")
+    df_fit = pd.DataFrame({"n": ns_arr, "R/S Médio": rs_arr, "Log(n)": np.log(ns_arr), "Log(R/S)": np.log(rs_arr)})
+    st.dataframe(df_fit, use_container_width=True, hide_index=True)
     st.markdown('</div>', unsafe_allow_html=True)
 
-# ----------------------------
-# 6) FOOTER
-# ----------------------------
-st.markdown("<div style='text-align:center; color:rgba(255,255,255,0.2); padding:20px;'>The Everything Calculator — Hurst Engine v2.0</div>", unsafe_allow_html=True)
+st.markdown("<div style='text-align:center; color:rgba(255,255,255,0.2); padding:20px;'>The Everything Calculator — Hurst Engine v2.1</div>", unsafe_allow_html=True)
