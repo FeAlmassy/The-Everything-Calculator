@@ -1,202 +1,82 @@
-# streamlit_app.py
-# TEC — Hurst Exponent (R/S) Analysis — Professional Edition
-# ------------------------------------------------------------
-# - Engine: Hurst / Rescaled Range (R/S) 
-# - UI: Design Dark Institucional (T.E.C. Style)
-# - Features: Upload Dinâmico, Log-Log Fit, Diagnósticos de Memória Longa
-
-from __future__ import annotations
-
-import time
-from typing import List, Tuple, Dict, Optional
-
-import numpy as np
-import pandas as pd
-import plotly.graph_objects as go
 import streamlit as st
+import numpy as np
+import sympy as sp
+import plotly.graph_objects as go
+from scipy.integrate import quad
 
-# ----------------------------
-# 0) PAGE CONFIG & THEME
-# ----------------------------
-st.set_page_config(page_title="TEC • Hurst Exponent", page_icon="📈", layout="wide")
+# --- CONFIGURAÇÃO T.E.C. STYLE ---
+st.set_page_config(page_title="TEC • Parametric Integrator", layout="wide")
 
 st.markdown("""
 <style>
-:root {
-  --bg: #0e1117;
-  --panel: rgba(255,255,255,0.04);
-  --border: rgba(255,255,255,0.08);
-  --accent: #FF4B4B;
-  --text-muted: rgba(229,231,235,0.60);
-}
-
-.main { background-color: var(--bg); }
-.stMetric {
-  background: linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.01));
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  padding: 15px;
-}
-
-.card {
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 18px;
-  padding: 20px;
-  margin-bottom: 20px;
-}
-
-.hr { border-top: 1px solid var(--border); margin: 1.5rem 0; }
-.footer { text-align:center; color: var(--text-muted); font-size: 0.85rem; margin-top: 30px; }
+    :root { --accent: #FF4B4B; --bg: #0e1117; }
+    .stApp { background-color: var(--bg); }
+    .main-title { font-size: 2.2rem; font-weight: 800; color: white; margin-bottom: 0; }
 </style>
 """, unsafe_allow_html=True)
 
-# ----------------------------
-# 1) CORE ENGINE (MATEMÁTICA)
-# ----------------------------
-
-def compute_rs_metrics(block: np.ndarray, ddof: int = 1) -> Dict:
-    """Calcula a estatística R/S para um único bloco de dados."""
-    n = len(block)
-    mu = np.mean(block)
-    std = np.std(block, ddof=ddof)
-    
-    # Normalização e Soma Cumulativa Centrada
-    centered_sum = np.cumsum(block - mu)
-    R = np.max(centered_sum) - np.min(centered_sum)
-    
-    rs = R / std if std > 0 else 0
-    return {"R": R, "S": std, "RS": rs}
-
-@st.cache_data(show_spinner=False)
-def hurst_analysis_full(series: np.ndarray, ns: List[int], ddof: int = 1) -> pd.DataFrame:
-    """Executa a análise R/S para múltiplos tamanhos de janela."""
-    results = []
-    for n in ns:
-        num_blocks = len(series) // n
-        if num_blocks == 0: continue
-        
-        # Slicing eficiente de blocos
-        blocks = series[:num_blocks * n].reshape((num_blocks, n))
-        rs_values = []
-        
-        for i in range(num_blocks):
-            m = compute_rs_metrics(blocks[i], ddof)
-            if m["RS"] > 0:
-                rs_values.append(m["RS"])
-        
-        if rs_values:
-            results.append({
-                "n": n,
-                "RS_mean": np.mean(rs_values),
-                "log_n": np.log(n),
-                "log_rs": np.log(np.mean(rs_values))
-            })
-            
-    return pd.DataFrame(results)
-
-# ----------------------------
-# 2) UI / SIDEBAR CONTROLS
-# ----------------------------
-st.title("📈 Hurst Exponent Analysis")
-st.caption("Análise de Faixa Reescalada (R/S) para Identificação de Memória Longa")
-st.markdown("<div class='hr'></div>", unsafe_allow_html=True)
+st.markdown('<p class="main-title">🧩 Construtor de Modelos Paramétricos</p>', unsafe_allow_html=True)
+st.caption("Ajuste coeficientes reais para modelagem de fenômenos sem erros de sintaxe.")
 
 with st.sidebar:
-    st.header("⚙️ Configurações")
-    uploaded = st.file_uploader("Data Source (.csv, .xlsx)", type=["csv", "xlsx"])
+    st.header("⚙️ Configuração do Modelo")
+    modelo = st.selectbox("Escolha o Modelo Matemático", 
+                        ["Polinomial (Quadrático)", "Oscilatório (Senoide)", "Crescimento Exponencial"])
     
-    if uploaded:
-        ext = uploaded.name.split('.')[-1]
-        df_raw = pd.read_csv(uploaded) if ext == "csv" else pd.read_excel(uploaded)
-        col_target = st.selectbox("Coluna Alvo", df_raw.columns)
-        series = pd.to_numeric(df_raw[col_target], errors='coerce').dropna().values
-    else:
-        st.info("Aguardando upload... Usando dados sintéticos (Random Walk).")
-        series = np.cumsum(np.random.randn(2000))
+    st.divider()
+    
+    if modelo == "Polinomial (Quadrático)":
+        st.write("f(x) = ax² + bx + c")
+        a_val = st.slider("Coeficiente a", -5.0, 5.0, 1.0)
+        b_val = st.slider("Coeficiente b", -5.0, 5.0, 0.0)
+        c_val = st.slider("Constante c", -10.0, 10.0, 0.0)
+        expr_str = f"{a_val}*x**2 + {b_val}*x + {c_val}"
         
-    st.markdown("---")
-    st.subheader("Parâmetros de Escala")
-    min_n = st.number_input("Janela Mínima (n)", value=10, min_value=4)
-    max_n = st.number_input("Janela Máxima (n)", value=len(series)//4, min_value=20)
-    num_points = st.slider("Pontos de Amostragem", 10, 100, 30)
-    spacing = st.radio("Espaçamento de n", ["Logarítmico", "Linear"])
-    ddof_val = st.selectbox("Graus de Liberdade (std)", [1, 0], index=0)
+    elif modelo == "Oscilatório (Senoide)":
+        st.write("f(x) = A * sin(w * x + phi)")
+        amp = st.slider("Amplitude (A)", 0.1, 10.0, 1.0)
+        freq = st.slider("Frequência (w)", 0.1, 5.0, 1.0)
+        fase = st.slider("Fase (phi)", 0.0, 6.28, 0.0)
+        expr_str = f"{amp}*sin({freq}*x + {fase})"
+        
+    elif modelo == "Crescimento Exponencial":
+        st.write("f(x) = A * e^(k * x)")
+        base = st.slider("Escala (A)", 0.1, 5.0, 1.0)
+        taxa = st.slider("Taxa (k)", -1.0, 1.0, 0.2)
+        expr_str = f"{base}*exp({taxa}*x)"
 
-# ----------------------------
-# 3) PROCESSAMENTO
-# ----------------------------
-if spacing == "Logarítmico":
-    ns = np.unique(np.geomspace(min_n, max_n, num_points).astype(int)).tolist()
-else:
-    ns = np.unique(np.linspace(min_n, max_n, num_points).astype(int)).tolist()
+    st.divider()
+    limites = st.slider("Intervalo de Integração [a, b]", -20.0, 20.0, (0.0, 5.0))
+    n_part = st.number_input("Partições (n)", value=100)
 
-# Execução da análise
-t0 = time.time()
-df_results = hurst_analysis_full(series, ns, ddof_val)
-t_exec = time.time() - t0
+# --- ENGINE MATEMÁTICA ---
+x_sym = sp.Symbol('x')
+expr = sp.sympify(expr_str)
+f_num = sp.lambdify(x_sym, expr, modules=['numpy'])
 
-# Regressão Linear para H
-if not df_results.empty:
-    poly = np.polyfit(df_results["log_n"], df_results["log_rs"], 1)
-    H_exponent = poly[0]
-    intercept = poly[1]
-    df_results["fit"] = np.exp(intercept) * (df_results["n"] ** H_exponent)
-else:
-    H_exponent = 0
+# Cálculo da Integral (SciPy para referência rápida)
+area, _ = quad(f_num, limites[0], limites[1])
 
-# ----------------------------
-# 4) DASHBOARD LAYOUT
-# ----------------------------
-m1, m2, m3, m4 = st.columns(4)
+# --- VISUALIZAÇÃO ---
+st.latex(rf"f(x) = {sp.latex(expr)}")
 
-# Lógica de interpretação do Hurst
-def interpret_hurst(h):
-    if h > 0.55: return "Persistente (Trend)"
-    if h < 0.45: return "Anti-persistente"
-    return "Random Walk"
+col1, col2 = st.columns([3, 1])
 
-m1.metric("Hurst Exponent (H)", f"{H_exponent:.4f}")
-m2.metric("Regime", interpret_hurst(H_exponent))
-m3.metric("Pontos Analisados", len(series))
-m4.metric("Tempo de Processamento", f"{t_exec:.3f}s")
-
-st.markdown("<div class='hr'></div>", unsafe_allow_html=True)
-
-tab_viz, tab_data, tab_theory = st.tabs(["📊 Visualização", "📋 Dados Brutos", "📚 Teoria"])
-
-with tab_viz:
-    c1, c2 = st.columns(2)
+with col1:
+    x_plot = np.linspace(limites[0]-2, limites[1]+2, 500)
+    y_plot = f_num(x_plot)
     
-    with c1:
-        st.subheader("Escalonamento R/S")
-        fig_raw = go.Figure()
-        fig_raw.add_trace(go.Scatter(x=df_results["n"], y=df_results["RS_mean"], mode='markers+lines', name="R/S observado", marker=dict(color='#FF4B4B')))
-        fig_raw.update_layout(template="plotly_dark", xaxis_title="n", yaxis_title="R/S(n)", margin=dict(l=0,r=0,b=0))
-        st.plotly_chart(fig_raw, use_container_width=True)
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=x_plot, y=y_plot, name="f(x)", line=dict(color="#FF4B4B", width=3)))
+    
+    # Preenchimento da Integral
+    x_fill = np.linspace(limites[0], limites[1], 100)
+    fig.add_trace(go.Scatter(x=x_fill, y=f_num(x_fill), fill='tozeroy', name="Área Integrada", fillcolor='rgba(255, 75, 75, 0.2)', line=dict(width=0)))
+    
+    fig.update_layout(template="plotly_dark", height=500, margin=dict(l=0,r=0,t=0,b=0))
+    st.plotly_chart(fig, use_container_width=True)
 
-    with c2:
-        st.subheader("Regressão Log-Log")
-        fig_log = go.Figure()
-        fig_log.add_trace(go.Scatter(x=df_results["log_n"], y=df_results["log_rs"], mode='markers', name="Dados", marker=dict(color='#1E90FF')))
-        fig_log.add_trace(go.Scatter(x=df_results["log_n"], y=np.polyval(poly, df_results["log_n"]), mode='lines', name=f"H = {H_exponent:.4f}", line=dict(dash='dash')))
-        fig_log.update_layout(template="plotly_dark", xaxis_title="log(n)", yaxis_title="log(R/S)", margin=dict(l=0,r=0,b=0))
-        st.plotly_chart(fig_log, use_container_width=True)
-
-with tab_data:
-    st.dataframe(df_results, use_container_width=True)
-
-with tab_theory:
-    st.markdown("""
-    ### O que é o Expoente de Hurst?
-    O expoente de Hurst ($H$) é uma medida de **memória de longo prazo** em séries temporais. 
-    Ele quantifica a tendência relativa de uma série temporal de regredir à média ou de se agrupar em uma direção.
-    """)
-    st.latex(r"E[R(n)/S(n)] = C \cdot n^H")
-    st.markdown("""
-    - **$H < 0.5$**: Série Anti-persistente (significa que um aumento será seguido por uma queda).
-    - **$H = 0.5$**: Random Walk (Movimento Browniano clássico).
-    - **$H > 0.5$**: Série Persistente (um aumento no passado indica probabilidade de aumento no futuro).
-    """)
-
-st.markdown("<div class='footer'>The Everything Calculator - Unconventional Analysis Group (U.A.G.) • 2026</div>", unsafe_allow_html=True)
+with col2:
+    st.metric("Integral Calculada", f"{area:.4f}")
+    st.write(f"Intervalo: [{limites[0]}, {limites[1]}]")
+    st.info("Esta abordagem foca em parâmetros de negócio/engenharia.")
