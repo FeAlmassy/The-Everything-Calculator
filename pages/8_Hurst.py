@@ -1,11 +1,6 @@
 # streamlit_app.py
-# TEC — Hurst Exponent (R/S) — Professional Edition
+# TEC — Hurst Exponent (R/S) — Professional Edition (FIXED TOP)
 # ------------------------------------------------------------
-# - Design Institucional TEC (Dark Mode & No-Clipping)
-# - Suporte Robusto a Excel/CSV (Auto-delimiter)
-# - Análise de Rescaled Range (R/S)
-# - Hurst Móvel (Rolling Memory Analysis)
-# - Diagnóstico de Fractalidade e Normalidade
 
 from __future__ import annotations
 import time
@@ -17,79 +12,98 @@ import plotly.express as px
 import streamlit as st
 
 # ----------------------------
-# 0) CONFIGURAÇÃO DA PÁGINA (DEVE SER A PRIMEIRA)
+# 0) CONFIGURAÇÃO DA PÁGINA
 # ----------------------------
 st.set_page_config(page_title="TEC • Hurst Pro", page_icon="📈", layout="wide")
 
 # ----------------------------
-# 1) ESTILO (CSS) - PADRÃO TEC SEM CORTES
+# 1) ESTILO (CSS) - BLINDAGEM CONTRA CORTES
 # ----------------------------
 st.markdown(
     """
 <style>
-:root {
-  --bg: #0e1117;
-  --panel: rgba(255,255,255,.045);
-  --stroke: rgba(255,255,255,.08);
-  --text: rgba(255,255,255,.92);
-  --muted: rgba(229,231,235,.60);
-  --accent: #FF4B4B;
-  --accent2: #1E90FF;
+/* 1. Esconde a barra nativa do Streamlit que causa o corte */
+header[data-testid="stHeader"] {
+    visibility: hidden;
+    height: 0px;
 }
 
-/* Ajuste de margem superior para evitar que o Streamlit corte o título */
+/* 2. Define o fundo e o espaçamento real do container */
+.main { background-color: #0e1117; }
 .block-container { 
     max-width: 1250px; 
-    padding-top: 5.5rem !important; 
+    padding-top: 2rem !important; /* Reduzido pois agora o spacer faz o trabalho */
     padding-bottom: 2rem; 
 }
 
+/* 3. Spacer de segurança no topo */
+.top-spacer { height: 40px; }
+
+/* 4. Título com line-height e overflow corrigido */
+.title-container {
+    margin-bottom: 2rem;
+    padding-top: 10px;
+}
+
+.title { 
+    font-size: 2.5rem; 
+    font-weight: 800; 
+    color: rgba(255,255,255,.95); 
+    line-height: 1.1; 
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    overflow: visible !important;
+}
+
+.sub { 
+    color: rgba(229,231,235,.60); 
+    margin-top: 8px;
+    font-size: 1.1rem; 
+}
+
+/* 5. Design dos Cards */
 .card {
-  background: var(--panel);
-  border: 1px solid var(--stroke);
+  background: rgba(255,255,255,.045);
+  border: 1px solid rgba(255,255,255,.08);
   border-radius: 16px;
   padding: 1.5rem;
   margin-bottom: 1.2rem;
 }
 
-.title { 
-    font-size: 2.4rem; 
-    font-weight: 800; 
-    color: var(--text); 
-    margin-bottom: 0.5rem;
-    line-height: 1.4; /* Aumentado para evitar corte no topo das letras e emojis */
-    display: flex;
-    align-items: center;
-    gap: 15px;
-}
-
-.sub { 
-    color: var(--muted); 
-    margin-bottom: 2.5rem; 
-    font-size: 1.1rem; 
-}
-
-/* Customização dos Cards de Métricas */
 div[data-testid="stMetric"] {
   background: linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.01));
-  border: 1px solid var(--stroke);
+  border: 1px solid rgba(255,255,255,.08);
   border-radius: 14px;
-  padding: 15px;
 }
 
-hr { border:none; border-top:1px solid var(--stroke); margin: 2rem 0; }
-
-.footer { text-align:center; color: var(--muted); margin-top: 40px; font-size: 0.85rem; }
+hr { border:none; border-top:1px solid rgba(255,255,255,.08); margin: 2rem 0; }
 </style>
 """,
     unsafe_allow_html=True,
 )
 
 # ----------------------------
-# 2) ENGINE MATEMÁTICO (CORE)
+# 2) ELEMENTO ESPAÇADOR + HEADER
+# ----------------------------
+# O spacer "empurra" o conteúdo para baixo fisicamente, evitando o erro de corte
+st.markdown('<div class="top-spacer"></div>', unsafe_allow_html=True)
+
+st.markdown(
+    """
+<div class="title-container">
+    <div class="title">📈 Hurst Exponent Engine</div>
+    <div class="sub">Análise Profissional de Rescaled Range (R/S) para detecção de persistência.</div>
+</div>
+""",
+    unsafe_allow_html=True,
+)
+
+# ----------------------------
+# 3) ENGINE (CÁLCULO R/S)
 # ----------------------------
 def get_hurst_rs(serie: np.ndarray, ns: np.ndarray) -> Tuple[np.ndarray, float, float]:
-    """Calcula o Hurst usando Rescaled Range Analysis."""
+    """Cálculo do R/S com base em Mandelbrot/Hurst."""
     rs_values = []
     for n in ns:
         n_chunks = len(serie) // n
@@ -111,144 +125,130 @@ def get_hurst_rs(serie: np.ndarray, ns: np.ndarray) -> Tuple[np.ndarray, float, 
             rs_values.append(np.nan)
             
     rs_values = np.array(rs_values)
-    mask = np.isfinite(np.log(rs_values))
-    # Regressão linear no espaço log-log
-    h, intercept = np.polyfit(np.log(ns[mask]), np.log(rs_values[mask]), 1)
+    mask = np.isfinite(np.log10(rs_values))
+    # Usando log10 para consistência visual no gráfico
+    h, intercept = np.polyfit(np.log10(ns[mask]), np.log10(rs_values[mask]), 1)
     return rs_values, h, intercept
 
-def get_rolling_hurst(serie: np.ndarray, window: int) -> np.ndarray:
-    """Calcula o Hurst de forma móvel ao longo da série."""
-    rolling_h = []
-    # Usamos uma grade fixa de 'n' para otimizar performance no cálculo móvel
-    ns_fixo = np.unique(np.geomspace(8, window//2.5, 8).astype(int))
-    
-    for i in range(len(serie) - window):
-        chunk = serie[i : i+window]
-        _, h_val, _ = get_hurst_rs(chunk, ns_fixo)
-        rolling_h.append(h_val)
-    return np.array(rolling_h)
-
 # ----------------------------
-# 3) CABEÇALHO
+# 4) INPUT DE DADOS (CSV/EXCEL)
 # ----------------------------
-st.markdown('<div class="title"><span>📈</span> Hurst Exponent Engine</div>', unsafe_allow_html=True)
-st.markdown('<div class="sub">Análise Profissional de Rescaled Range (R/S) para detecção de persistência em dados.</div>', unsafe_allow_html=True)
-
-# ----------------------------
-# 4) SIDEBAR (CONTROLES)
-# ----------------------------
-st.sidebar.header("📂 Configurações de Dados")
-uploaded = st.sidebar.file_uploader("Upload CSV ou Excel", type=["csv", "xlsx"])
+st.sidebar.header("📁 Importação")
+uploaded = st.sidebar.file_uploader("Upload arquivo", type=["csv", "xlsx"])
 
 if uploaded:
     try:
         if uploaded.name.endswith('.csv'):
-            # Detecta delimitador (vírgula, ponto-e-vírgula, etc) automaticamente
+            # Engine python + sep=None detecta vírgula ou ponto-e-vírgula do arquivo carregado
             df = pd.read_csv(uploaded, sep=None, engine='python')
         else:
             df = pd.read_excel(uploaded)
         
-        target_col = st.sidebar.selectbox("Coluna para Análise", df.select_dtypes(include=[np.number]).columns)
+        num_cols = df.select_dtypes(include=[np.number]).columns.tolist()
+        target_col = st.sidebar.selectbox("Coluna", num_cols)
         data = df[target_col].dropna().values
-        st.sidebar.success(f"Carregado: {len(data)} pontos")
     except Exception as e:
-        st.sidebar.error(f"Erro ao processar arquivo: {e}")
+        st.sidebar.error(f"Erro no arquivo: {e}")
         st.stop()
 else:
-    # Dados de Demonstração
-    st.sidebar.info("Aguardando arquivo. Simulando dados...")
+    # Fallback para simulação
+    st.sidebar.info("Aguardando arquivo. Simulando dados.")
     data = np.cumsum(np.random.randn(1000) + 0.01)
 
+# ----------------------------
+# 5) PARÂMETROS E PROCESSAMENTO
+# ----------------------------
 st.sidebar.markdown("---")
-st.sidebar.header("⚙️ Parâmetros")
-min_n = st.sidebar.number_input("Janela Mín (n)", 4, 100, 8)
+st.sidebar.header("⚙️ Configurações")
+min_n = st.sidebar.number_input("Janela Mín (n)", 8, 100, 8)
 max_n = st.sidebar.number_input("Janela Máx (n)", 100, len(data)//2, 512)
-points = st.sidebar.slider("Resolução (n)", 10, 60, 25)
-window_roll = st.sidebar.slider("Janela Móvel (Rolling)", 100, len(data)//2, 300)
+points = st.sidebar.slider("Resolução", 10, 50, 25)
+window_roll = st.sidebar.slider("Janela Móvel (Hurst)", 100, len(data)//2, 300)
 
-# ----------------------------
-# 5) CÁLCULOS
-# ----------------------------
 t0 = time.time()
 ns = np.unique(np.geomspace(min_n, max_n, points).astype(int))
 rs_vals, H, intercept = get_hurst_rs(data, ns)
-fractal_dim = 2 - H
 dt = time.time() - t0
 
 # ----------------------------
-# 6) MÉTRICAS
+# 6) MÉTRICAS PRINCIPAIS
 # ----------------------------
-m1, m2, m3, m4 = st.columns(4)
+c1, c2, c3, c4 = st.columns(4)
 
-# Lógica de interpretação
-if H > 0.55: status = "PERSISTENTE"
-elif H < 0.45: status = "ANTI-PERSISTENTE"
-else: status = "RANDOM WALK"
+if H > 0.55: msg = "PERSISTENTE"
+elif H < 0.45: msg = "ANTI-PERSISTENTE"
+else: msg = "ALEATÓRIO"
 
-m1.metric("Expoente H", f"{H:.4f}")
-m2.metric("Regime", status)
-m3.metric("Dim. Fractal", f"{fractal_dim:.2f}")
-m4.metric("Processamento", f"{dt*1000:.0f}ms")
+c1.metric("Expoente H", f"{H:.4f}")
+c2.metric("Regime", msg)
+c3.metric("Dim. Fractal (D)", f"{2-H:.2f}")
+c4.metric("Processamento", f"{dt*1000:.0f}ms")
 
-st.markdown("<div class='hr'></div>", unsafe_allow_html=True)
+st.markdown("<hr/>", unsafe_allow_html=True)
 
 # ----------------------------
-# 7) VISUALIZAÇÃO
+# 7) VISUALIZAÇÃO (ABAS)
 # ----------------------------
-tab_rs, tab_roll, tab_raw = st.tabs(["📊 Análise R/S", "📈 Hurst Móvel", "📄 Dados Brutos"])
+tab1, tab2, tab3 = st.tabs(["📊 Análise R/S", "📈 Hurst Dinâmico", "📄 Dados"])
 
-with tab_rs:
-    c1, c2 = st.columns(2)
+with tab1:
+    g1, g2 = st.columns(2)
     
-    with c1:
+    with g1:
         st.markdown('<div class="card">', unsafe_allow_html=True)
-        # Gráfico Log-Log
+        # Plot Log-Log (Base 10 para melhor leitura)
         fig_log = go.Figure()
         fig_log.add_trace(go.Scatter(
             x=np.log10(ns), y=np.log10(rs_vals),
             mode='markers', name='Obs', marker=dict(color='#FF4B4B', size=10)
         ))
-        
-        # Linha de Regressão
         lx = np.log10(ns)
-        ly = (H * np.log(ns) + intercept) / np.log(10)
-        fig_log.add_trace(go.Scatter(x=lx, y=ly, mode='lines', name=f'H={H:.3f}', line=dict(color='white', dash='dot')))
+        ly = H * lx + intercept
+        fig_log.add_trace(go.Scatter(x=lx, y=ly, mode='lines', name=f'Fit (H={H:.3f})', line=dict(color='white', dash='dot')))
         
         fig_log.update_layout(
-            title="Diagnóstico Log-Log (Inclinação = H)",
-            xaxis_title="log10(n)", yaxis_title="log10(R/S)",
+            title="Escalonamento Log10 (R/S Analysis)",
+            xaxis_title="log10(Janela n)", yaxis_title="log10(R/S)",
             template="plotly_dark", paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', height=450
         )
         st.plotly_chart(fig_log, use_container_width=True)
         st.markdown('</div>', unsafe_allow_html=True)
 
-    with c2:
+    with g2:
         st.markdown('<div class="card">', unsafe_allow_html=True)
-        # Histograma de Retornos
-        fig_hist = px.histogram(np.diff(data), nbins=50, title="Distribuição de Retornos", color_discrete_sequence=['#1E90FF'])
-        fig_hist.update_layout(template="plotly_dark", paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', height=450)
-        st.plotly_chart(fig_hist, use_container_width=True)
+        # Série Temporal Original
+        fig_series = go.Figure()
+        fig_series.add_trace(go.Scatter(y=data, mode='lines', line=dict(color='#1E90FF', width=1.5)))
+        fig_series.update_layout(
+            title="Série de Dados Analisada",
+            template="plotly_dark", paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', height=450
+        )
+        st.plotly_chart(fig_series, use_container_width=True)
         st.markdown('</div>', unsafe_allow_html=True)
 
-with tab_roll:
+with tab2:
     st.markdown('<div class="card">', unsafe_allow_html=True)
-    with st.spinner("Calculando Hurst Móvel..."):
-        roll_h = get_rolling_hurst(data, window_roll)
+    # Cálculo Rolling Hurst
+    rolling_h = []
+    ns_fixo = np.unique(np.geomspace(8, window_roll//2.5, 8).astype(int))
+    for i in range(len(data) - window_roll):
+        _, h_val, _ = get_hurst_rs(data[i:i+window_roll], ns_fixo)
+        rolling_h.append(h_val)
     
     fig_roll = go.Figure()
-    fig_roll.add_trace(go.Scatter(y=roll_h, mode='lines', line=dict(color='#00CC96'), fill='tozeroy', name="Rolling H"))
-    fig_roll.add_hline(y=0.5, line_dash="dash", line_color="white", annotation_text="Eficiência (0.5)")
+    fig_roll.add_trace(go.Scatter(y=rolling_h, mode='lines', line=dict(color='#00CC96'), fill='tozeroy'))
+    fig_roll.add_hline(y=0.5, line_dash="dash", line_color="white", annotation_text="Passeio Aleatório")
     fig_roll.update_layout(
-        title="Dinâmica Temporal do Expoente de Hurst",
+        title=f"Variação do Hurst no Tempo (Janela = {window_roll})",
         template="plotly_dark", paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', height=500
     )
     st.plotly_chart(fig_roll, use_container_width=True)
     st.markdown('</div>', unsafe_allow_html=True)
 
-with tab_raw:
+with tab3:
     st.markdown('<div class="card">', unsafe_allow_html=True)
     df_raw = pd.DataFrame({"Janela (n)": ns, "R/S Médio": rs_vals})
     st.dataframe(df_raw, use_container_width=True)
     st.markdown('</div>', unsafe_allow_html=True)
 
-st.markdown("<div class='footer'>TEC — Professional Hurst Engine • Fellipe Almässy</div>", unsafe_allow_html=True)
+st.markdown("<div style='text-align:center; color:rgba(255,255,255,0.2); font-size:12px; padding:20px;'>TEC Professional Edition — Hurst Analytics</div>", unsafe_allow_html=True)
