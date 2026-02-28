@@ -1,534 +1,226 @@
 # streamlit_app.py
-# TEC — The Everything Calculator
-# Hurst Exponent (R/S Analysis) — Excel Input
+# Engine de Análise de Hurst — Versão Profissional (TEC)
 # ------------------------------------------------------------
-# Features
-# - Upload .xlsx/.xls or .csv
-# - Choose sheet + column
-# - Clean/convert to numeric, drop NaNs
-# - Compute R/S exactly in the style we built:
-#   1) mean center
-#   2) cumulative sum
-#   3) range (max-min)
-#   4) std (ddof selectable; default ddof=1)
-#   5) R/S = R / S
-# - Plot raw (non-log) R/S vs n
-# - Plot "entropized" (log-log) + linear fit => H (slope)
-# - TEC-style layout: dark UI, cards, clear explanations
+# - Algoritmo Rescaled Range (R/S) de Hurst
+# - Suporte a upload de Excel/CSV
+# - Visualização Log-Log com Regressão Linear
+# - Diagnósticos de Persistência e Memória
+# - Estilo Institucional TEC
 
-from __future__ import annotations
-
-import io
-import math
-from dataclasses import dataclass
-from typing import Iterable, List, Tuple, Optional
-
-import numpy as np
-import pandas as pd
-import plotly.graph_objects as go
 import streamlit as st
-
-
-# ----------------------------
-# 0) PAGE CONFIG
-# ----------------------------
-st.set_page_config(
-    page_title="TEC • Hurst (R/S)",
-    page_icon="📈",
-    layout="wide",
-)
-
+import pandas as pd
+import numpy as np
+import plotly.graph_objects as go
+import time
+from typing import Tuple, List
 
 # ----------------------------
-# 1) TEC STYLE (dark, clean)
+# 0) CONFIGURAÇÃO DA PÁGINA
 # ----------------------------
-st.markdown(
-    """
+st.set_page_config(page_title="TEC | Hurst Exponent", layout="wide")
+
+# ----------------------------
+# 1) ESTILO (CSS) - PADRÃO TEC
+# ----------------------------
+st.markdown("""
 <style>
-:root{
-  --bg:#0b1220;
-  --panel:#0f1a2e;
-  --panel2:#0d172a;
-  --stroke:rgba(255,255,255,.10);
-  --muted:rgba(229,231,235,.65);
-  --text:rgba(255,255,255,.92);
-  --accent:#6ee7ff;
-  --accent2:#a78bfa;
-  --good:#34d399;
-  --warn:#fbbf24;
-  --bad:#fb7185;
+:root {
+  --bg: #0e1117;
+  --border: rgba(255,255,255,0.08);
+  --muted: rgba(229,231,235,0.60);
+  --accent: #FF4B4B;
+  --accent2: #1E90FF;
 }
-
-html, body, [class*="css"] {
-  background: var(--bg) !important;
+.main { background-color: var(--bg); }
+section[data-testid="stSidebar"] { background-color: #0b1020; border-right: 1px solid var(--border); }
+div[data-testid="stMetric"]{
+  background: linear-gradient(180deg, rgba(255,255,255,0.045), rgba(255,255,255,0.018));
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 14px;
+  padding: 14px;
 }
-
-.block-container{
-  padding-top: 1.2rem;
-  padding-bottom: 2rem;
-  max-width: 1250px;
+.hr { border-top: 1px solid var(--border); margin: 1rem 0; }
+.badge {
+  display:inline-block; padding: 0.18rem 0.55rem; border-radius: 999px;
+  background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.08);
+  color: rgba(229,231,235,0.80); font-size: 0.82rem;
 }
-
-.tec-title{
-  font-size: 1.6rem;
-  font-weight: 750;
-  color: var(--text);
-  margin: 0 0 .25rem 0;
-  letter-spacing: .2px;
-}
-.tec-sub{
-  color: var(--muted);
-  margin: 0 0 1rem 0;
-}
-
-.card{
-  background: linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.02));
-  border: 1px solid var(--stroke);
-  border-radius: 18px;
-  padding: 14px 14px;
-}
-
-.card h3{
-  margin: 0 0 .4rem 0;
-  color: var(--text);
-  font-size: 1.05rem;
-  font-weight: 700;
-}
-.card p, .card li{
-  color: var(--muted);
-  line-height: 1.35rem;
-  font-size: .95rem;
-}
-
-.kpi{
-  display:flex;
-  gap:12px;
-  flex-wrap: wrap;
-}
-.kpi-box{
-  flex: 1;
-  min-width: 180px;
-  background: rgba(255,255,255,.03);
-  border: 1px solid var(--stroke);
-  border-radius: 16px;
-  padding: 12px 12px;
-}
-.kpi-label{
-  color: var(--muted);
-  font-size: .82rem;
-}
-.kpi-value{
-  color: var(--text);
-  font-size: 1.25rem;
-  font-weight: 750;
-  margin-top: 2px;
-}
-
-hr{
-  border: none;
-  border-top: 1px solid var(--stroke);
-  margin: 1rem 0;
-}
-.small-note{
-  color: var(--muted);
-  font-size: .86rem;
-}
+.footer { text-align:center; color: var(--muted); margin-top: 20px; font-size: 0.85rem; }
 </style>
-""",
-    unsafe_allow_html=True,
-)
-
-st.markdown(
-    """
-<div class="tec-title">📈 Hurst Exponent — R/S Analysis</div>
-<div class="tec-sub">
-Upload an Excel/CSV, pick a numeric column, compute R/S across scales <b>n</b>, then estimate <b>H</b> from the log–log slope.
-</div>
-""",
-    unsafe_allow_html=True,
-)
-
+""", unsafe_allow_html=True)
 
 # ----------------------------
-# 2) CORE MATH (R/S)
+# 2) CORE ENGINE: HURST R/S
 # ----------------------------
-def rs_stat(serie: np.ndarray, ddof: int = 1) -> float:
-    """
-    R/S for ONE window (exactly the method we built):
-    - mean center
-    - cumulative sum
-    - range = max-min
-    - std = np.std(serie, ddof=ddof)
-    - return R/S
-    """
-    x = np.asarray(serie, dtype=float)
-    if x.size < 2:
-        return np.nan
-
-    mu = np.mean(x)
-    y = np.cumsum(x - mu)  # accumulated centered series
-    R = float(np.max(y) - np.min(y))
-
-    S = float(np.std(x, ddof=ddof))
-    if S == 0.0 or not np.isfinite(S):
-        return np.nan
-
-    return R / S
-
-
-def rs_by_blocks(serie: np.ndarray, n: int, ddof: int = 1) -> float:
-    """
-    Compute R/S(n) by splitting series into non-overlapping blocks of length n,
-    computing R/S per block, and averaging.
-
-    This is more stable than prefix-only and still uses the exact same core rs_stat.
-    """
-    x = np.asarray(serie, dtype=float)
-    if n <= 1 or n > x.size:
-        return np.nan
-
-    k = x.size // n
-    if k < 1:
-        return np.nan
-
-    blocks = x[: k * n].reshape(k, n)
-    vals = np.array([rs_stat(blocks[i], ddof=ddof) for i in range(k)], dtype=float)
-    vals = vals[np.isfinite(vals) & (vals > 0)]
-    if vals.size == 0:
-        return np.nan
-    return float(np.mean(vals))
-
-
-def choose_ns(n_points: int, min_n: int, max_n: int, how: str) -> np.ndarray:
-    min_n = int(max(2, min_n))
-    max_n = int(max(min_n + 1, max_n))
-    n_points = int(max(8, n_points))
-
-    if how == "log":
-        ns = np.unique(np.round(np.logspace(np.log10(min_n), np.log10(max_n), n_points)).astype(int))
-    else:
-        ns = np.unique(np.linspace(min_n, max_n, n_points).round().astype(int))
-
-    ns = ns[(ns >= 2) & (ns <= max_n)]
-    return ns
-
-
-def fit_hurst(ns: np.ndarray, rs_vals: np.ndarray, log_base: str = "e") -> Tuple[float, float]:
-    """
-    Fit log(R/S) = a + H log(n)
-    Returns (H, C) where C = base^a (or exp(a) if base=e)
-    """
-    ns = np.asarray(ns, dtype=float)
-    rs_vals = np.asarray(rs_vals, dtype=float)
-
-    mask = (ns > 0) & (rs_vals > 0) & np.isfinite(rs_vals)
-    x = ns[mask]
-    y = rs_vals[mask]
-
-    if x.size < 2:
-        return np.nan, np.nan
-
-    if log_base == "2":
-        lx = np.log2(x)
-        ly = np.log2(y)
-        H, a = np.polyfit(lx, ly, 1)
-        C = 2 ** a
-    elif log_base == "10":
-        lx = np.log10(x)
-        ly = np.log10(y)
-        H, a = np.polyfit(lx, ly, 1)
-        C = 10 ** a
-    else:
-        lx = np.log(x)
-        ly = np.log(y)
-        H, a = np.polyfit(lx, ly, 1)
-        C = math.exp(a)
-
-    return float(H), float(C)
-
+def get_hurst_exponent(series: np.ndarray, max_window: int = None) -> Tuple[float, List, List]:
+    """Calcula o expoente de Hurst usando Rescaled Range Analysis."""
+    series = np.array(series)
+    N = len(series)
+    
+    # Gera janelas (powers of 2)
+    min_window = 8
+    if max_window is None:
+        max_window = N // 2
+        
+    # Criar escalas logarítmicas
+    lags = np.unique(np.floor(np.geomspace(min_window, max_window, num=20)).astype(int))
+    
+    RS_values = []
+    
+    for lag in lags:
+        # Divide a série em blocos de tamanho 'lag'
+        n_chunks = N // lag
+        rs_list = []
+        
+        for i in range(n_chunks):
+            chunk = series[i*lag : (i+1)*lag]
+            # 1. Calcular média e desvio
+            mean = np.mean(chunk)
+            std = np.std(chunk)
+            if std == 0: continue
+            
+            # 2. Séries acumulada de desvios
+            z = np.cumsum(chunk - mean)
+            
+            # 3. Range (Amplitude)
+            r = np.max(z) - np.min(z)
+            
+            # 4. Rescaled Range
+            rs_list.append(r / std)
+            
+        RS_values.append(np.mean(rs_list))
+    
+    # Regressão Linear no espaço log-log
+    log_lags = np.log(lags)
+    log_rs = np.log(RS_values)
+    
+    p = np.polyfit(log_lags, log_rs, 1)
+    return float(p[0]), lags, RS_values
 
 # ----------------------------
-# 3) INPUT (Excel/CSV)
+# 3) UI - HEADER E TEORIA
 # ----------------------------
-with st.container():
-    left, right = st.columns([1.15, 0.85], gap="large")
+st.title("Hurst Exponent Engine")
+st.caption("Análise de Memória de Longo Prazo e Fractalidade")
+st.markdown("<div class='hr'></div>", unsafe_allow_html=True)
 
-    with left:
-        st.markdown('<div class="card"><h3>1) Data input</h3>', unsafe_allow_html=True)
-        st.write("Upload your file and select the numeric column you want to analyze.")
+with st.expander("📚 Teoria: O que o Expoente de Hurst nos diz?"):
+    st.markdown("""
+    O expoente de Hurst ($H$) é uma medida de **autocorrelação de longo prazo**.
+    * **$H < 0.5$ (Anti-persistente):** A série tende a reverter à média. Se subiu, a probabilidade é que desça.
+    * **$H = 0.5$ (Random Walk):** Passeio aleatório (Movimento Browniano). Sem memória.
+    * **$H > 0.5$ (Persistente):** Presença de tendência. Se subiu, tende a continuar subindo.
+    """)
+    st.latex(r"E[R(n)/S(n)] = C \cdot n^H")
 
-        uploaded = st.file_uploader("Upload (.xlsx / .xls / .csv)", type=["xlsx", "xls", "csv"])
+# ----------------------------
+# 4) SIDEBAR - CONTROLES
+# ----------------------------
+st.sidebar.header("Data Input")
+uploaded_file = st.sidebar.file_uploader("Upload Excel ou CSV", type=['xlsx', 'csv'])
 
-        df = None
-        sheet_name = None
+if uploaded_file:
+    try:
+        if uploaded_file.name.endswith('.csv'):
+            df_input = pd.read_csv(uploaded_file)
+        else:
+            df_input = pd.read_excel(uploaded_file)
+        
+        col_target = st.sidebar.selectbox("Selecione a Coluna", df_input.columns)
+        data_series = df_input[col_target].dropna().values
+        
+        st.sidebar.success(f"Loaded: {len(data_series)} pontos")
+    except Exception as e:
+        st.sidebar.error(f"Erro ao carregar: {e}")
+        st.stop()
+else:
+    # Gerador de dados sintéticos para demo
+    st.sidebar.info("Aguardando arquivo. Usando Random Walk para demonstração.")
+    data_series = np.cumsum(np.random.randn(2000))
 
-        if uploaded is not None:
-            try:
-                if uploaded.name.lower().endswith(".csv"):
-                    df = pd.read_csv(uploaded)
-                else:
-                    xls = pd.ExcelFile(uploaded)
-                    if len(xls.sheet_names) > 1:
-                        sheet_name = st.selectbox("Sheet", xls.sheet_names, index=0)
-                        df = pd.read_excel(xls, sheet_name=sheet_name)
-                    else:
-                        sheet_name = xls.sheet_names[0]
-                        df = pd.read_excel(xls, sheet_name=sheet_name)
-            except Exception as e:
-                st.error(f"Could not read the file. Details: {e}")
+# ----------------------------
+# 5) PROCESSAMENTO
+# ----------------------------
+t0 = time.time()
+H, lags, rs_vals = get_hurst_exponent(data_series)
+dt = time.time() - t0
 
-        if df is not None:
-            st.caption(f"Loaded: {uploaded.name}" + (f" • sheet: {sheet_name}" if sheet_name else ""))
+# ----------------------------
+# 6) DASHBOARD - MÉTRICAS
+# ----------------------------
+m1, m2, m3, m4 = st.columns(4)
 
-            col1, col2 = st.columns([0.62, 0.38], gap="small")
-            with col1:
-                col_choice = st.selectbox("Numeric column", list(df.columns), index=0)
-            with col2:
-                ddof = st.selectbox("Std ddof", [1, 0], index=0, help="ddof=1 (sample) is the usual choice; ddof=0 is population std.")
+# Lógica de interpretação
+if H < 0.45: status, color = "REVERSÃO", "normal"
+elif H > 0.55: status, color = "TENDÊNCIA", "normal"
+else: status, color = "ALEATÓRIO", "off"
 
-            # Convert to numeric + drop NaNs
-            series_raw = pd.to_numeric(df[col_choice], errors="coerce").dropna()
-            serie = series_raw.to_numpy(dtype=float)
+m1.metric("Expoente de Hurst (H)", f"{H:.4f}")
+m2.metric("Comportamento", status)
+m3.metric("Pontos Analisados", f"{len(data_series)}")
+m4.metric("Tempo de Proc.", f"{dt:.3f}s")
 
-            st.markdown("<hr/>", unsafe_allow_html=True)
-            st.markdown('<div class="small-note">Cleaning rules: non-numeric → NaN → dropped.</div>', unsafe_allow_html=True)
-            st.write("Rows kept:", int(serie.size))
+st.markdown("<div class='hr'></div>", unsafe_allow_html=True)
 
-            if serie.size > 0:
-                st.write("Preview:", serie[:10])
+# ----------------------------
+# 7) VISUALIZAÇÃO (ABAS)
+# ----------------------------
+tab_plot, tab_data = st.tabs(["Análise Gráfica", "Dados de Regressão"])
 
-        st.markdown("</div>", unsafe_allow_html=True)
-
-    with right:
-        st.markdown('<div class="card"><h3>2) R/S scale settings</h3>', unsafe_allow_html=True)
-        st.write("Choose the range of window sizes **n** used to compute R/S(n).")
-
-        method = st.selectbox(
-            "R/S aggregation",
-            ["blocks_mean", "prefix"],
-            index=0,
-            help=(
-                "blocks_mean: split into non-overlapping blocks of size n, compute R/S per block, then average.\n"
-                "prefix: compute R/S on the first n points only (more didactic, less stable)."
-            ),
+with tab_plot:
+    col_left, col_right = st.columns([2, 1])
+    
+    with col_left:
+        # Gráfico Log-Log
+        fig = go.Figure()
+        
+        # Pontos R/S
+        fig.add_trace(go.Scatter(
+            x=np.log10(lags), y=np.log10(rs_vals),
+            mode='markers', name='R/S Observado',
+            marker=dict(color='#1E90FF', size=10, opacity=0.7)
+        ))
+        
+        # Linha de Regressão
+        m, b = np.polyfit(np.log10(lags), np.log10(rs_vals), 1)
+        fit_y = m * np.log10(lags) + b
+        
+        fig.add_trace(go.Scatter(
+            x=np.log10(lags), y=fit_y,
+            mode='lines', name=f'Fit (H={H:.3f})',
+            line=dict(color='#FF4B4B', width=2, dash='dot')
+        ))
+        
+        fig.update_layout(
+            title="Diagnóstico Log-Log (R/S Analysis)",
+            xaxis_title="log(Janela)", yaxis_title="log(R/S)",
+            template="plotly_dark", height=500,
+            margin=dict(l=20, r=20, t=60, b=20)
         )
+        st.plotly_chart(fig, use_container_width=True)
 
-        how = st.selectbox("n spacing", ["log", "linear"], index=0)
-        log_base = st.selectbox("log base for the fit", ["e", "10", "2"], index=0)
-
-        min_n = st.number_input("min n", min_value=2, value=16, step=1)
-        max_n = st.number_input("max n", min_value=3, value=1024, step=1)
-        n_points = st.slider("how many n values", min_value=8, max_value=60, value=25)
-
-        st.markdown("<hr/>", unsafe_allow_html=True)
-        st.markdown(
-            """
-<div class="small-note">
-<b>Tip:</b> For stable H estimates, prefer log-spaced n and keep max n well below the series length.
-</div>
-""",
-            unsafe_allow_html=True,
+    with col_right:
+        st.markdown("### Série Temporal")
+        fig_series = go.Figure()
+        fig_series.add_trace(go.Scatter(y=data_series, line=dict(color='#FF4B4B', width=1.5)))
+        fig_series.update_layout(
+            template="plotly_dark", height=300, 
+            showlegend=False, margin=dict(l=0,r=0,t=0,b=0)
         )
+        st.plotly_chart(fig_series, use_container_width=True)
+        
+        st.info(f"O valor de H={H:.2f} indica que a série possui {'memória positiva' if H > 0.5 else 'memória negativa (reversão)' if H < 0.5 else 'ausência de memória'}.")
 
-        st.markdown("</div>", unsafe_allow_html=True)
-
-
-# ----------------------------
-# 4) COMPUTE
-# ----------------------------
-if uploaded is None or df is None:
-    st.info("Upload a file to start.")
-    st.stop()
-
-if "serie" not in locals() or serie.size < 50:
-    st.warning("Need at least ~50 numeric points to produce meaningful R/S scaling.")
-    st.stop()
-
-# Ensure max_n doesn't exceed size too much
-max_reasonable = max(3, int(serie.size // 2))
-if max_n > max_reasonable:
-    st.warning(f"max n capped to {max_reasonable} (≈ half of your series length).")
-    max_n = max_reasonable
-
-ns = choose_ns(n_points=n_points, min_n=int(min_n), max_n=int(max_n), how=how)
-
-rs_vals = []
-for n in ns:
-    if method == "blocks_mean":
-        rs_vals.append(rs_by_blocks(serie, int(n), ddof=int(ddof)))
-    else:
-        # prefix mode
-        rs_vals.append(rs_stat(serie[: int(n)], ddof=int(ddof)))
-
-rs_vals = np.array(rs_vals, dtype=float)
-
-H, C = fit_hurst(ns, rs_vals, log_base=log_base)
-
-# KPI panel
-st.markdown('<div class="card"><h3>Results</h3>', unsafe_allow_html=True)
-st.markdown(
-    f"""
-<div class="kpi">
-  <div class="kpi-box">
-    <div class="kpi-label">H (slope in log–log)</div>
-    <div class="kpi-value">{H:.6f}</div>
-  </div>
-  <div class="kpi-box">
-    <div class="kpi-label">C (scale constant)</div>
-    <div class="kpi-value">{C:.6g}</div>
-  </div>
-  <div class="kpi-box">
-    <div class="kpi-label">Valid R/S points</div>
-    <div class="kpi-value">{int(np.sum(np.isfinite(rs_vals) & (rs_vals>0)))}/{len(ns)}</div>
-  </div>
-  <div class="kpi-box">
-    <div class="kpi-label">Series length</div>
-    <div class="kpi-value">{serie.size}</div>
-  </div>
-</div>
-""",
-    unsafe_allow_html=True,
-)
-
-st.markdown(
-    r"""
-<div class="small-note" style="margin-top:.6rem;">
-Model: \( \log(R/S) = \log(C) + H\log(n) \). In log–log space, \(H\) is the line slope.
-</div>
-""",
-    unsafe_allow_html=True,
-)
-st.markdown("</div>", unsafe_allow_html=True)
-
-st.markdown("<br/>", unsafe_allow_html=True)
-
+with tab_data:
+    df_diag = pd.DataFrame({
+        "Janela (n)": lags,
+        "R/S Average": rs_vals,
+        "log(n)": np.log10(lags),
+        "log(R/S)": np.log10(rs_vals)
+    })
+    st.dataframe(df_diag, use_container_width=True, hide_index=True)
 
 # ----------------------------
-# 5) PLOTS
+# 8) RODAPÉ
 # ----------------------------
-valid_mask = np.isfinite(rs_vals) & (rs_vals > 0) & np.isfinite(ns) & (ns > 0)
-ns_v = ns[valid_mask]
-rs_v = rs_vals[valid_mask]
-
-c1, c2 = st.columns(2, gap="large")
-
-# --- Plot 1: raw (non-log) R/S vs n
-with c1:
-    st.markdown('<div class="card"><h3>Raw scale plot (no log)</h3>', unsafe_allow_html=True)
-    st.markdown(
-        """
-<p>
-This is the direct curve \(R/S(n)\) versus window size \(n\). It usually looks like a smooth, increasing curve.
-</p>
-""",
-        unsafe_allow_html=True,
-    )
-
-    fig1 = go.Figure()
-    fig1.add_trace(
-        go.Scatter(
-            x=ns_v,
-            y=rs_v,
-            mode="markers+lines",
-            name="R/S(n)",
-        )
-    )
-    fig1.update_layout(
-        height=430,
-        margin=dict(l=10, r=10, t=10, b=10),
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(0,0,0,0)",
-        xaxis=dict(title="n (window size)", gridcolor="rgba(255,255,255,.08)", zeroline=False),
-        yaxis=dict(title="R/S(n)", gridcolor="rgba(255,255,255,.08)", zeroline=False),
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
-        font=dict(color="rgba(255,255,255,.88)"),
-    )
-    st.plotly_chart(fig1, use_container_width=True)
-    st.markdown("</div>", unsafe_allow_html=True)
-
-# --- Plot 2: "entropized" (log-log) + fit
-with c2:
-    st.markdown('<div class="card"><h3>Entropized plot (log–log) + fit</h3>', unsafe_allow_html=True)
-    st.markdown(
-        r"""
-<p>
-In log–log, a power law becomes a line:
-\[
-\log(R/S) = \log(C) + H\log(n)
-\]
-So the slope is \(H\).
-</p>
-""",
-        unsafe_allow_html=True,
-    )
-
-    # log transform for plot (use natural logs for fit line visualization; slope is invariant to base)
-    lx = np.log(ns_v)
-    ly = np.log(rs_v)
-
-    # Fit in natural log space for plotting a line (same H)
-    H_plot, a_plot = np.polyfit(lx, ly, 1)
-    ly_hat = a_plot + H_plot * lx
-
-    fig2 = go.Figure()
-    fig2.add_trace(go.Scatter(x=lx, y=ly, mode="markers", name="log(R/S)"))
-    fig2.add_trace(go.Scatter(x=lx, y=ly_hat, mode="lines", name=f"fit slope ≈ {H_plot:.4f}"))
-
-    fig2.update_layout(
-        height=430,
-        margin=dict(l=10, r=10, t=10, b=10),
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(0,0,0,0)",
-        xaxis=dict(title="log(n)", gridcolor="rgba(255,255,255,.08)", zeroline=False),
-        yaxis=dict(title="log(R/S(n))", gridcolor="rgba(255,255,255,.08)", zeroline=False),
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
-        font=dict(color="rgba(255,255,255,.88)"),
-    )
-
-    st.plotly_chart(fig2, use_container_width=True)
-
-    st.markdown(
-        f"""
-<div class="small-note">
-Fit (natural log for visualization): slope \(\\approx {H_plot:.6f}\\). Your chosen base for reporting: <b>{log_base}</b>.
-</div>
-""",
-        unsafe_allow_html=True,
-    )
-    st.markdown("</div>", unsafe_allow_html=True)
-
-
-# ----------------------------
-# 6) TABLE + EXPORT
-# ----------------------------
-st.markdown("<br/>", unsafe_allow_html=True)
-st.markdown('<div class="card"><h3>R/S table</h3>', unsafe_allow_html=True)
-
-out_df = pd.DataFrame({"n": ns, "R/S(n)": rs_vals})
-st.dataframe(out_df, use_container_width=True, height=260)
-
-csv_bytes = out_df.to_csv(index=False).encode("utf-8")
-st.download_button("Download R/S table as CSV", data=csv_bytes, file_name="rs_table.csv", mime="text/csv")
-
-st.markdown("</div>", unsafe_allow_html=True)
-
-
-# ----------------------------
-# 7) NOTES (TEC-style)
-# ----------------------------
-st.markdown("<br/>", unsafe_allow_html=True)
-st.markdown('<div class="card"><h3>How to interpret H</h3>', unsafe_allow_html=True)
-st.markdown(
-    r"""
-<ul>
-  <li><b>H ≈ 0.5</b>: compatible with an uncorrelated random process (no long-term memory).</li>
-  <li><b>H > 0.5</b>: persistent behavior (moves tend to reinforce).</li>
-  <li><b>H < 0.5</b>: anti-persistent behavior (moves tend to revert).</li>
-</ul>
-<div class="small-note">
-Practical note: very small \(n\) and very large \(n\) can add noise/bias. Try log-spaced \(n\) and keep \(n\) comfortably below series length.
-</div>
-""",
-    unsafe_allow_html=True,
-)
-st.markdown("</div>", unsafe_allow_html=True)
+st.markdown(f"<div class='footer'>The Everything Calculator - Fellipe Almässy • {time.strftime('%Y')}</div>", unsafe_allow_html=True)
