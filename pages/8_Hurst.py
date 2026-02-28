@@ -1,214 +1,140 @@
 # streamlit_app.py
-# TEC — Hurst Exponent (R/S) — Excel Input
+# TEC — Hurst Exponent (R/S) — Versão Restaurada e Blindada
 # ------------------------------------------------------------
-# - Versão Restaurada (Simplicidade e Tabela de Blocos)
-# - Correção de CSS para evitar clipping no topo
-# - Suporte a CSV/Excel com auto-detecção
 
 from __future__ import annotations
-import math
-from typing import List, Tuple
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
+import time
 
 # ----------------------------
-# 0) PAGE CONFIG
+# 0) CONFIGURAÇÃO (Obrigatório ser o 1º comando)
 # ----------------------------
 st.set_page_config(page_title="TEC • Hurst (R/S)", page_icon="📈", layout="wide")
 
 # ----------------------------
-# 1) TEC-STYLE (CSS REVISADO)
+# 1) CSS DE BLINDAGEM (Evita o erro de texto cortado)
 # ----------------------------
 st.markdown(
     """
 <style>
-:root{
-  --bg:#0b1220;
-  --panel:rgba(255,255,255,.04);
-  --stroke:rgba(255,255,255,.10);
-  --text:rgba(255,255,255,.92);
-  --muted:rgba(229,231,235,.66);
-}
-
-/* Esconde o header nativo para evitar o erro de corte */
+/* Esconde o cabeçalho nativo que sobrepõe o título */
 header[data-testid="stHeader"] { visibility: hidden; height: 0px; }
 
-html, body, [class*="css"]{ background:var(--bg) !important; }
-
-.block-container{ 
-    max-width:1250px; 
-    padding-top:4rem !important; /* Espaço extra no topo */
-    padding-bottom:2rem; 
+/* Garante fundo escuro e empurra o conteúdo para baixo */
+.main { background-color: #0b1220; }
+.block-container { 
+    max-width: 1250px; 
+    padding-top: 5rem !important; 
 }
 
-.card{
-  background:var(--panel);
-  border:1px solid var(--stroke);
-  border-radius:18px;
-  padding:1.5rem;
-  margin-bottom: 1rem;
+/* Estilo dos Cards e Textos */
+.card {
+    background: rgba(255,255,255,.04);
+    border: 1px solid rgba(255,255,255,.10);
+    border-radius: 18px;
+    padding: 1.5rem;
+    margin-bottom: 1rem;
 }
 
-.title{ 
-    font-size:1.8rem; 
-    font-weight:800; 
-    color:var(--text); 
-    margin:0 0 .5rem 0; 
+.title { 
+    font-size: 2.2rem; 
+    font-weight: 800; 
+    color: rgba(255,255,255,.92); 
     line-height: 1.2;
+    margin-bottom: 0.5rem;
 }
 
-.sub{ color:var(--muted); margin:0 0 1.5rem 0; line-height:1.4rem; }
-.small{ color:var(--muted); font-size:.88rem; }
-hr{ border:none; border-top:1px solid var(--stroke); margin:1rem 0; }
+.sub { color: rgba(229,231,235,.66); margin-bottom: 2rem; }
+
+div[data-testid="stMetric"] {
+    background: linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.01));
+    border: 1px solid rgba(255,255,255,.10);
+    border-radius: 12px;
+}
 </style>
 """,
     unsafe_allow_html=True,
 )
 
-st.markdown(
-    """
-<div class="title">📈 Hurst Exponent — R/S Analysis</div>
-<div class="sub">
-Upload an Excel/CSV, compute <b>R/S</b> per block, then estimate <b>H</b> from the slope in the log–log plot.
-</div>
-""",
-    unsafe_allow_html=True,
-)
+# Título Principal
+st.markdown('<div class="title">📈 Hurst Exponent — R/S Analysis</div>', unsafe_allow_html=True)
+st.markdown('<div class="sub">Análise de Rescaled Range (R/S) com Tabela de Métricas por Bloco.</div>', unsafe_allow_html=True)
 
 # ----------------------------
-# 2) CORE FUNCTIONS
+# 2) FUNÇÕES DO MOTOR
 # ----------------------------
-def dividir_em_blocos(lista, tamanho):
-    return [lista[i : i + tamanho] for i in range(0, len(lista), tamanho) if len(lista[i : i + tamanho]) == tamanho]
-
 def metricas_do_bloco(bloco, ddof=1):
     x = np.array(bloco, dtype=float)
-    mu = float(np.mean(x))
-    S = float(np.std(x, ddof=ddof))
-    centered = x - mu
-    Y = np.cumsum(centered)
-    R = float(np.max(Y) - np.min(Y))
-    RS = float(R / S) if S != 0 else np.nan
-    return {
-        "mean": mu, "std": S, "min_cumsum": np.min(Y),
-        "max_cumsum": np.max(Y), "R": R, "RS": RS
-    }
+    mu, std = np.mean(x), np.std(x, ddof=ddof)
+    Y = np.cumsum(x - mu)
+    R = np.max(Y) - np.min(Y)
+    return {"mean": mu, "std": std, "R": R, "RS": R/std if std > 0 else np.nan, "min_Y": np.min(Y), "max_Y": np.max(Y)}
 
-def tabela_metricas_blocos(serie: List[float], n: int, ddof: int = 1) -> pd.DataFrame:
-    blocos = dividir_em_blocos(serie, n)
-    rows = []
-    for idx, bloco in enumerate(blocos, start=1):
-        m = metricas_do_bloco(bloco, ddof=ddof)
-        m["block"] = idx
-        m["n"] = n
-        rows.append(m)
-    return pd.DataFrame(rows)
+def rs_medio_por_n(serie, n):
+    blocos = [serie[i:i+n] for i in range(0, len(serie), n) if len(serie[i:i+n]) == n]
+    rs_vals = [metricas_do_bloco(b)["RS"] for b in blocos]
+    return np.mean([r for r in rs_vals if np.isfinite(r)]) if rs_vals else np.nan
 
-def rs_medio_por_n(serie: List[float], n: int, ddof: int = 1) -> float:
-    blocos = dividir_em_blocos(serie, n)
-    if not blocos: return np.nan
-    rs_vals = [metricas_do_bloco(b, ddof=ddof)["RS"] for b in blocos]
-    rs_vals = [r for r in rs_vals if np.isfinite(r) and r > 0]
-    return float(np.mean(rs_vals)) if rs_vals else np.nan
+# ----------------------------
+# 3) INTERFACE LATERAL E UPLOAD
+# ----------------------------
+st.sidebar.header("📁 Dados")
+uploaded = st.sidebar.file_uploader("Upload CSV/Excel", type=["csv", "xlsx"])
 
-def choose_ns(min_n: int, max_n: int, points: int, spacing: str) -> List[int]:
-    if spacing == "log":
-        ns = np.unique(np.round(np.logspace(np.log10(min_n), np.log10(max_n), points)).astype(int))
+if uploaded:
+    if uploaded.name.endswith('.csv'):
+        df = pd.read_csv(uploaded, sep=None, engine='python')
     else:
-        ns = np.unique(np.linspace(min_n, max_n, points).round().astype(int))
-    return ns[(ns >= 2)].tolist()
-
-def fit_hurst(ns: np.ndarray, rs_vals: np.ndarray) -> Tuple[float, float]:
-    mask = (ns > 0) & (rs_vals > 0) & np.isfinite(rs_vals)
-    x, y = np.log10(ns[mask]), np.log10(rs_vals[mask])
-    if x.size < 2: return np.nan, np.nan
-    H, a = np.polyfit(x, y, 1)
-    return float(H), float(10**a)
-
-# ----------------------------
-# 3) INPUT
-# ----------------------------
-with st.container():
-    c1, c2 = st.columns([1.2, 0.8], gap="large")
-
-    with c1:
-        st.markdown('<div class="card">', unsafe_allow_html=True)
-        st.subheader("1) Data Upload")
-        uploaded = st.file_uploader("Upload (.xlsx / .csv)", type=["xlsx", "csv"])
-        
-        df = None
-        if uploaded:
-            if uploaded.name.lower().endswith(".csv"):
-                df = pd.read_csv(uploaded, sep=None, engine='python')
-            else:
-                df = pd.read_excel(uploaded)
-            
-            col = st.selectbox("Numeric column", list(df.select_dtypes(include=[np.number]).columns))
-            serie = df[col].dropna().astype(float).tolist()
-            st.write(f"Series length: {len(serie)}")
-        st.markdown("</div>", unsafe_allow_html=True)
-
-    with c2:
-        st.markdown('<div class="card">', unsafe_allow_html=True)
-        st.subheader("2) Settings")
-        n_block = st.number_input("Block size for table (n)", 2, 5000, 100)
-        min_n = st.number_input("Min n scaling", 4, 100, 8)
-        max_n = st.number_input("Max n scaling", 100, 2000, 512)
-        spacing = st.selectbox("Spacing", ["log", "linear"])
-        st.markdown("</div>", unsafe_allow_html=True)
-
-if not uploaded:
-    st.info("Please upload a file to proceed.")
+        df = pd.read_excel(uploaded)
+    col = st.sidebar.selectbox("Coluna Numérica", df.select_dtypes(include=[np.number]).columns)
+    serie = df[col].dropna().values
+else:
+    st.sidebar.info("Aguardando arquivo...")
     st.stop()
 
-# ----------------------------
-# 4) TABELA DE BLOCOS
-# ----------------------------
-st.markdown('<div class="card">', unsafe_allow_html=True)
-st.subheader(f"3) Metrics per Block (n = {n_table if 'n_table' in locals() else n_block})")
-df_blocks = tabela_metricas_blocos(serie, int(n_block))
-st.dataframe(df_blocks, use_container_width=True, height=250, hide_index=True)
-st.markdown("</div>", unsafe_allow_html=True)
+# Configurações
+n_block = st.sidebar.number_input("n para Tabela", 2, 5000, 100)
+min_n, max_n = st.sidebar.slider("Faixa de n (Scaling)", 8, 100, 8), st.sidebar.slider("Máx n", 100, len(serie)//2, 512)
 
 # ----------------------------
-# 5) SCALING & REGRESSION
+# 4) TABELA DE BLOCOS (REQUISITO DA VERSÃO 2)
 # ----------------------------
-ns = choose_ns(int(min_n), int(max_n), 25, spacing)
+st.markdown('<div class="card">', unsafe_allow_html=True)
+st.subheader(f"📋 Métricas por Bloco (n = {n_block})")
+blocos_lista = [serie[i:i+n_block] for i in range(0, len(serie), n_block) if len(serie[i:i+n_block]) == n_block]
+df_blocks = pd.DataFrame([metricas_do_bloco(b) for b in blocos_lista])
+st.dataframe(df_blocks, use_container_width=True, height=250)
+st.markdown('</div>', unsafe_allow_html=True)
+
+# ----------------------------
+# 5) CÁLCULO HURST E GRÁFICOS
+# ----------------------------
+ns = np.unique(np.geomspace(min_n, max_n, 20).astype(int))
 rs_vals = np.array([rs_medio_por_n(serie, n) for n in ns])
-H, C = fit_hurst(np.array(ns), rs_vals)
+valid = np.isfinite(np.log10(rs_vals))
+H, inter = np.polyfit(np.log10(ns[valid]), np.log10(rs_vals[valid]), 1)
 
-st.markdown('<div class="card">', unsafe_allow_html=True)
-st.write(f"**Estimated Hurst Exponent (H):** {H:.6f}")
-st.write(f"**Interpretation:** {'Trending' if H > 0.55 else 'Mean Reverting' if H < 0.45 else 'Random Walk'}")
-st.markdown("</div>", unsafe_allow_html=True)
+m1, m2 = st.columns(2)
+m1.metric("Hurst Exponent (H)", f"{H:.4f}")
+m2.metric("Regime", "Persistente" if H > 0.55 else "Reversão" if H < 0.45 else "Aleatório")
 
-# ----------------------------
-# 6) PLOTS
-# ----------------------------
-cA, cB = st.columns(2)
-
-valid = np.isfinite(rs_vals) & (rs_vals > 0)
-ns_v, rs_v = np.array(ns)[valid], rs_vals[valid]
-
-with cA:
+col_a, col_b = st.columns(2)
+with col_a:
     st.markdown('<div class="card">', unsafe_allow_html=True)
-    fig1 = go.Figure(go.Scatter(x=ns_v, y=rs_v, mode="lines+markers", line=dict(color="#1E90FF")))
-    fig1.update_layout(title="R/S(n) vs n", template="plotly_dark", height=400, 
-                      paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
+    fig1 = go.Figure(go.Scatter(x=ns, y=rs_vals, mode='lines+markers', line=dict(color='#1E90FF')))
+    fig1.update_layout(title="R/S vs n", template="plotly_dark", paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
     st.plotly_chart(fig1, use_container_width=True)
-    st.markdown("</div>", unsafe_allow_html=True)
+    st.markdown('</div>', unsafe_allow_html=True)
 
-with cB:
+with col_b:
     st.markdown('<div class="card">', unsafe_allow_html=True)
-    lx, ly = np.log10(ns_v), np.log10(rs_v)
+    lx, ly = np.log10(ns[valid]), np.log10(rs_vals[valid])
     fig2 = go.Figure()
-    fig2.add_trace(go.Scatter(x=lx, y=ly, mode="markers", name="Log Data", marker=dict(color="#FF4B4B")))
-    fig2.add_trace(go.Scatter(x=lx, y=H*lx + np.log10(C), mode="lines", name="Fit", line=dict(color="white", dash="dot")))
-    fig2.update_layout(title="Log-Log Plot", template="plotly_dark", height=400,
-                      paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
+    fig2.add_trace(go.Scatter(x=lx, y=ly, mode='markers', name='Dados', marker=dict(color='#FF4B4B')))
+    fig2.add_trace(go.Scatter(x=lx, y=H*lx + inter, mode='lines', name=f'H={H:.3f}', line=dict(color='white', dash='dot')))
+    fig2.update_layout(title="Log-Log Plot", template="plotly_dark", paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
     st.plotly_chart(fig2, use_container_width=True)
-    st.markdown("</div>", unsafe_allow_html=True)
-
-st.markdown("<div style='text-align:center; color:gray; font-size:12px;'>TEC — Hurst Engine</div>", unsafe_allow_html=True)
+    st.markdown('</div>', unsafe_allow_html=True)
