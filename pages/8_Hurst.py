@@ -40,7 +40,7 @@ st.markdown(
 /* Ajuste de margem superior para evitar que o Streamlit corte o título */
 .block-container { 
     max-width: 1250px; 
-    padding-top: 5rem !important; 
+    padding-top: 5.5rem !important; 
     padding-bottom: 2rem; 
 }
 
@@ -57,7 +57,7 @@ st.markdown(
     font-weight: 800; 
     color: var(--text); 
     margin-bottom: 0.5rem;
-    line-height: 1.3; /* Aumentado para evitar corte no topo das letras */
+    line-height: 1.4; /* Aumentado para evitar corte no topo das letras e emojis */
     display: flex;
     align-items: center;
     gap: 15px;
