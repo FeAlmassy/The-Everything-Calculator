@@ -57,7 +57,7 @@ st.markdown(
     font-weight: 800; 
     color: var(--text); 
     margin-bottom: 0.5rem;
-    line-height: 1.2; 
+    line-height: 1.3; /* Aumentado para evitar corte no topo das letras */
     display: flex;
     align-items: center;
     gap: 15px;
@@ -119,7 +119,7 @@ def get_hurst_rs(serie: np.ndarray, ns: np.ndarray) -> Tuple[np.ndarray, float, 
 def get_rolling_hurst(serie: np.ndarray, window: int) -> np.ndarray:
     """Calcula o Hurst de forma móvel ao longo da série."""
     rolling_h = []
-    # Usamos uma grade fixa de 'n' para velocidade
+    # Usamos uma grade fixa de 'n' para otimizar performance no cálculo móvel
     ns_fixo = np.unique(np.geomspace(8, window//2.5, 8).astype(int))
     
     for i in range(len(serie) - window):
@@ -132,7 +132,7 @@ def get_rolling_hurst(serie: np.ndarray, window: int) -> np.ndarray:
 # 3) CABEÇALHO
 # ----------------------------
 st.markdown('<div class="title"><span>📈</span> Hurst Exponent Engine</div>', unsafe_allow_html=True)
-st.markdown('<div class="sub">Análise Profissional de Rescaled Range (R/S) para Séries Temporais.</div>', unsafe_allow_html=True)
+st.markdown('<div class="sub">Análise Profissional de Rescaled Range (R/S) para detecção de persistência em dados.</div>', unsafe_allow_html=True)
 
 # ----------------------------
 # 4) SIDEBAR (CONTROLES)
@@ -143,163 +143,112 @@ uploaded = st.sidebar.file_uploader("Upload CSV ou Excel", type=["csv", "xlsx"])
 if uploaded:
     try:
         if uploaded.name.endswith('.csv'):
-            # O separador None permite que o pandas detecte vírgula ou ponto-e-vírgula sozinho
+            # Detecta delimitador (vírgula, ponto-e-vírgula, etc) automaticamente
             df = pd.read_csv(uploaded, sep=None, engine='python')
         else:
             df = pd.read_excel(uploaded)
         
-        target_col = st.sidebar.selectbox("Selecione a Coluna", df.select_dtypes(include=[np.number]).columns)
+        target_col = st.sidebar.selectbox("Coluna para Análise", df.select_dtypes(include=[np.number]).columns)
         data = df[target_col].dropna().values
-        st.sidebar.success(f"Carregado: {len(data)} registros")
+        st.sidebar.success(f"Carregado: {len(data)} pontos")
     except Exception as e:
         st.sidebar.error(f"Erro ao processar arquivo: {e}")
         st.stop()
 else:
-    # Dados de Demonstração (Random Walk com Tendência)
-    st.sidebar.info("Aguardando arquivo. Usando simulação padrão.")
+    # Dados de Demonstração
+    st.sidebar.info("Aguardando arquivo. Simulando dados...")
     data = np.cumsum(np.random.randn(1000) + 0.01)
 
 st.sidebar.markdown("---")
-st.sidebar.header("⚙️ Parâmetros da Análise")
-min_n = st.sidebar.number_input("Janela Mínima (n)", 4, 100, 8)
-max_n = st.sidebar.number_input("Janela Máxima (n)", 100, len(data)//2, 512)
-points = st.sidebar.slider("Resolução (Pontos de n)", 10, 60, 25)
+st.sidebar.header("⚙️ Parâmetros")
+min_n = st.sidebar.number_input("Janela Mín (n)", 4, 100, 8)
+max_n = st.sidebar.number_input("Janela Máx (n)", 100, len(data)//2, 512)
+points = st.sidebar.slider("Resolução (n)", 10, 60, 25)
 window_roll = st.sidebar.slider("Janela Móvel (Rolling)", 100, len(data)//2, 300)
 
 # ----------------------------
-# 5) CÁLCULOS PRINCIPAIS
+# 5) CÁLCULOS
 # ----------------------------
 t0 = time.time()
 ns = np.unique(np.geomspace(min_n, max_n, points).astype(int))
 rs_vals, H, intercept = get_hurst_rs(data, ns)
-
-# Diagnóstico de Fractalidade
-# Dimensão Fractal D = 2 - H
 fractal_dim = 2 - H
-
 dt = time.time() - t0
 
 # ----------------------------
-# 6) LAYOUT DE MÉTRICAS (TOP CARDS)
+# 6) MÉTRICAS
 # ----------------------------
 m1, m2, m3, m4 = st.columns(4)
 
-# Lógica de Classificação
-if H > 0.55:
-    status, color = "PERSISTENTE", "normal"
-elif H < 0.45:
-    status, color = "ANTI-PERSISTENTE", "normal"
-else:
-    status, color = "RANDOM WALK", "off"
+# Lógica de interpretação
+if H > 0.55: status = "PERSISTENTE"
+elif H < 0.45: status = "ANTI-PERSISTENTE"
+else: status = "RANDOM WALK"
 
-m1.metric("Hurst Exponent (H)", f"{H:.4f}")
-m2.metric("Regime de Memória", status)
-m3.metric("Dimensão Fractal (D)", f"{fractal_dim:.2f}")
-m4.metric("Latência Engine", f"{dt*1000:.1f}ms")
+m1.metric("Expoente H", f"{H:.4f}")
+m2.metric("Regime", status)
+m3.metric("Dim. Fractal", f"{fractal_dim:.2f}")
+m4.metric("Processamento", f"{dt*1000:.0f}ms")
 
 st.markdown("<div class='hr'></div>", unsafe_allow_html=True)
 
 # ----------------------------
-# 7) ABAS DE VISUALIZAÇÃO
+# 7) VISUALIZAÇÃO
 # ----------------------------
-tab_main, tab_rolling, tab_data = st.tabs(["📊 Análise R/S", "📈 Dinâmica Temporal", "📄 Diagnóstico Bruto"])
+tab_rs, tab_roll, tab_raw = st.tabs(["📊 Análise R/S", "📈 Hurst Móvel", "📄 Dados Brutos"])
 
-with tab_main:
-    col_left, col_right = st.columns(2)
+with tab_rs:
+    c1, c2 = st.columns(2)
     
-    with col_left:
+    with c1:
         st.markdown('<div class="card">', unsafe_allow_html=True)
-        # Log-Log Plot
+        # Gráfico Log-Log
         fig_log = go.Figure()
         fig_log.add_trace(go.Scatter(
             x=np.log10(ns), y=np.log10(rs_vals),
-            mode='markers', name='Observado',
-            marker=dict(color='#FF4B4B', size=10, opacity=0.8)
+            mode='markers', name='Obs', marker=dict(color='#FF4B4B', size=10)
         ))
         
-        # Linha de Tendência
-        fit_x = np.log10(ns)
-        fit_y = H * np.log(ns) + intercept # Convertendo para base 10 visualmente
-        # (Nota: polyfit foi em log natural, ajustamos para a visualização log10 se preferir, 
-        # mas aqui manteremos a consistência visual da inclinação H)
-        fit_y_vis = (H * np.log(ns) + intercept) / np.log(10) 
-        
-        fig_log.add_trace(go.Scatter(
-            x=fit_x, y=fit_y_vis,
-            mode='lines', name=f'Slope H = {H:.3f}',
-            line=dict(color='white', width=2, dash='dot')
-        ))
+        # Linha de Regressão
+        lx = np.log10(ns)
+        ly = (H * np.log(ns) + intercept) / np.log(10)
+        fig_log.add_trace(go.Scatter(x=lx, y=ly, mode='lines', name=f'H={H:.3f}', line=dict(color='white', dash='dot')))
         
         fig_log.update_layout(
-            title="Diagnóstico Log-Log (R/S Scaling)",
-            xaxis_title="log10(Janela n)", yaxis_title="log10(R/S médio)",
-            template="plotly_dark", paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
-            height=450, margin=dict(t=60, b=20)
+            title="Diagnóstico Log-Log (Inclinação = H)",
+            xaxis_title="log10(n)", yaxis_title="log10(R/S)",
+            template="plotly_dark", paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', height=450
         )
         st.plotly_chart(fig_log, use_container_width=True)
         st.markdown('</div>', unsafe_allow_html=True)
 
-    with col_right:
+    with c2:
         st.markdown('<div class="card">', unsafe_allow_html=True)
-        # Distribuição de Retornos
-        returns = np.diff(data)
-        fig_dist = px.histogram(
-            returns, nbins=50, 
-            title="Distribuição de Retornos (Normalidade vs Fractalidade)",
-            color_discrete_sequence=['#1E90FF']
-        )
-        fig_dist.update_layout(
-            template="plotly_dark", paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
-            height=450, margin=dict(t=60, b=20)
-        )
-        st.plotly_chart(fig_dist, use_container_width=True)
+        # Histograma de Retornos
+        fig_hist = px.histogram(np.diff(data), nbins=50, title="Distribuição de Retornos", color_discrete_sequence=['#1E90FF'])
+        fig_hist.update_layout(template="plotly_dark", paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', height=450)
+        st.plotly_chart(fig_hist, use_container_width=True)
         st.markdown('</div>', unsafe_allow_html=True)
 
-with tab_rolling:
+with tab_roll:
     st.markdown('<div class="card">', unsafe_allow_html=True)
-    st.subheader("Hurst Móvel (Rolling Analysis)")
-    
-    with st.spinner("Calculando evolução temporal..."):
-        roll_h_vals = get_rolling_hurst(data, window_roll)
+    with st.spinner("Calculando Hurst Móvel..."):
+        roll_h = get_rolling_hurst(data, window_roll)
     
     fig_roll = go.Figure()
-    fig_roll.add_trace(go.Scatter(
-        y=roll_h_vals, mode='lines', 
-        line=dict(color='#00CC96', width=2),
-        fill='tozeroy', fillcolor='rgba(0, 204, 150, 0.1)',
-        name="Hurst Móvel"
-    ))
-    
-    # Linha guia de 0.5
-    fig_roll.add_hline(y=0.5, line_dash="dash", line_color="rgba(255,255,255,0.4)", annotation_text="Passeio Aleatório")
-    
+    fig_roll.add_trace(go.Scatter(y=roll_h, mode='lines', line=dict(color='#00CC96'), fill='tozeroy', name="Rolling H"))
+    fig_roll.add_hline(y=0.5, line_dash="dash", line_color="white", annotation_text="Eficiência (0.5)")
     fig_roll.update_layout(
-        title=f"Evolução da Memória (Janela Móvel = {window_roll} pts)",
-        xaxis_title="Tempo / Index", yaxis_title="Valor de H",
-        template="plotly_dark", paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
-        height=500
+        title="Dinâmica Temporal do Expoente de Hurst",
+        template="plotly_dark", paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', height=500
     )
     st.plotly_chart(fig_roll, use_container_width=True)
-    st.info("💡 Interpretação: Quando o Hurst Móvel sobe consistentemente acima de 0.5, o ativo está ganhando força de tendência (persistência). Quedas abaixo de 0.5 sugerem exaustão e reversão.")
     st.markdown('</div>', unsafe_allow_html=True)
 
-with tab_data:
+with tab_raw:
     st.markdown('<div class="card">', unsafe_allow_html=True)
-    st.subheader("Dados Brutos do Escalonamento")
-    df_diag = pd.DataFrame({
-        "Janela (n)": ns,
-        "R/S Médio": rs_vals,
-        "Log(n)": np.log(ns),
-        "Log(RS)": np.log(rs_vals)
-    })
-    st.dataframe(df_diag, use_container_width=True, hide_index=True)
-    
-    # Botão de download
-    csv = df_diag.to_csv(index=False).encode('utf-8')
-    st.download_button("📥 Baixar Tabela de Diagnóstico", data=csv, file_name="hurst_rs_scaling.csv", mime="text/csv")
+    df_raw = pd.DataFrame({"Janela (n)": ns, "R/S Médio": rs_vals})
+    st.dataframe(df_raw, use_container_width=True)
     st.markdown('</div>', unsafe_allow_html=True)
 
-# ----------------------------
-# 8) RODAPÉ
-# ----------------------------
-st.markdown("<div class='footer'>The Everything Calculator — Hurst Professional Engine • Fellipe Almässy</div>", unsafe_allow_html=True)
+st.markdown("<div class='footer'>TEC — Professional Hurst Engine • Fellipe Almässy</div>", unsafe_allow_html=True)
