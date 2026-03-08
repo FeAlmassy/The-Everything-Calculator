@@ -24,7 +24,7 @@ from scipy.integrate import quad
 # ----------------------------
 # 0) CONFIGURAÇÃO DA PÁGINA (DEVE SER A PRIMEIRA)
 # ----------------------------
-st.set_page_config(page_title="Integrais Indefinidas", layout="wide")
+st.set_page_config(page_title="Integrais CU", layout="wide")
 
 
 # ----------------------------
