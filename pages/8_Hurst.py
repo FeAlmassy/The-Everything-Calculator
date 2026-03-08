@@ -673,10 +673,31 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
+def _color_erro(val):
+    """Colore a coluna Erro Absoluto do verde (pequeno) ao vermelho (grande), sem matplotlib."""
+    try:
+        v = float(val)
+        if not np.isfinite(v) or v <= 0:
+            return "color: rgba(200,210,230,0.4)"
+        # normaliza em escala log entre os erros do df
+        erros = df_sorted["Erro Absoluto"].replace(0, np.nan).dropna()
+        lo, hi = np.log10(erros.min()), np.log10(erros.max())
+        if hi == lo:
+            t = 0.0
+        else:
+            t = (np.log10(v) - lo) / (hi - lo)   # 0 = melhor, 1 = pior
+        t = float(np.clip(t, 0, 1))
+        r = int(232 * t + 62 * (1 - t))
+        g = int(82  * t + 207 * (1 - t))
+        b_ = int(74  * t + 142 * (1 - t))
+        return f"color: rgb({r},{g},{b_}); font-family: 'JetBrains Mono', monospace; font-weight: 500"
+    except Exception:
+        return ""
+
 st.dataframe(
     df_sorted.style
         .format({"Resultado": "{:.8f}", "Erro Absoluto": "{:.4e}", "Tempo (ms)": "{:.3f}"})
-        .background_gradient(subset=["Erro Absoluto"], cmap="RdYlGn_r"),
+        .applymap(_color_erro, subset=["Erro Absoluto"]),
     use_container_width=True, hide_index=True)
 
 st.markdown("<div class='rule-line'></div>", unsafe_allow_html=True)
