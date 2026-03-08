@@ -57,7 +57,10 @@ html,body,[class*="css"]{
 }
 #MainMenu,footer,header{visibility:hidden}
 .block-container{padding:0 !important; max-width:100% !important;}
-section[data-testid="stSidebar"]{display:none}
+section[data-testid="stSidebar"]{
+  background: var(--bg2) !important;
+  border-right: 1px solid var(--border2) !important;
+}
 
 /* ── scrollbar ── */
 ::-webkit-scrollbar{width:5px}
