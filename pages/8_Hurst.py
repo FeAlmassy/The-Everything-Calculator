@@ -481,7 +481,7 @@ def main_plot(expr_str, expr, f_num, a, b, n, show_bars):
     mask = (xc >= a) & (xc <= b)
     fig.add_trace(go.Scatter(
         x=xc[mask], y=yc[mask], fill="tozeroy",
-        fillcolor="rgba(232,82,74,0.08)", line=dict(color="transparent"),
+        fillcolor="rgba(232,82,74,0.08)", line=dict(color="rgba(0,0,0,0)"),
         hoverinfo="skip", showlegend=False))
 
     fig.add_trace(go.Scatter(
