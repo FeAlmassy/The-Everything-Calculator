@@ -1,7 +1,37 @@
 import streamlit as st
 
 # ------------------------------------------------------------
-# 1) CONFIGURAÇÃO DA PÁGINA
+# 1) NAVEGAÇÃO — define as seções e páginas do TEC
+# ------------------------------------------------------------
+pg = st.navigation({
+    "Cálculo": [
+        st.Page("pages/calculo/integral_3d.py",  title="Integral 3D",  icon="📐"),
+        st.Page("pages/calculo/limite.py",        title="Limites",      icon="∂"),
+    ],
+    "Álgebra Linear": [
+        # st.Page("pages/algebra_linear/...", title="...", icon="..."),
+    ],
+    "Probabilidade & Estatística": [
+        # st.Page("pages/probabilidade_estatistica/...", title="...", icon="..."),
+    ],
+    "Finanças Quantitativas": [
+        # st.Page("pages/financas_quant/...", title="...", icon="..."),
+    ],
+    "Processos Estocásticos": [
+        st.Page("pages/processos_estocasticos/hurst.py", title="Hurst", icon="📈"),
+    ],
+    "Otimização": [
+        # st.Page("pages/otimizacao/...", title="...", icon="..."),
+    ],
+    "Análise Numérica": [
+        # st.Page("pages/analise_numerica/...", title="...", icon="..."),
+    ],
+})
+
+pg.run()
+
+# ------------------------------------------------------------
+# 2) CONFIGURAÇÃO DA PÁGINA
 # ------------------------------------------------------------
 st.set_page_config(
     page_title="TEC - The Everything Calculator",
@@ -10,7 +40,7 @@ st.set_page_config(
 )
 
 # ------------------------------------------------------------
-# 2) ESTILO (CSS) - IDENTIDADE VISUAL PREMIUM
+# 3) ESTILO (CSS) - IDENTIDADE VISUAL PREMIUM
 # ------------------------------------------------------------
 st.markdown(
     """
@@ -95,7 +125,6 @@ st.markdown(
     font-size: 0.9rem; 
 }
 
-/* Estilo para Blocos de Código e Tags */
 code { color: var(--accent) !important; }
 .badge {
     display: inline-block;
@@ -111,12 +140,12 @@ code { color: var(--accent) !important; }
 )
 
 # ------------------------------------------------------------
-# 3) HERO SECTION
+# 4) HERO SECTION
 # ------------------------------------------------------------
 st.markdown(
     """
     <div class="hero-section">
-        <div class="badge">ENGINE v1.0.4 - LIVE</div>
+        <div class="badge">ENGINE v1.1.0 - LIVE</div>
         <h1 class="title-text">THE EVERYTHING CALCULATOR</h1>
         <p style="color: var(--muted); font-size: 1.3rem; max-width: 800px; margin: 0 auto; line-height: 1.6;">
             Uma infraestrutura de computação numérica avançada focada em 
@@ -128,7 +157,7 @@ st.markdown(
 )
 
 # ------------------------------------------------------------
-# 4) GRID DE FUNCIONALIDADES (O QUE DÁ PRA FAZER?)
+# 5) GRID DE FUNCIONALIDADES
 # ------------------------------------------------------------
 st.markdown("### 🛠️ Módulos de Matemática")
 c1, c2, c3 = st.columns(3)
@@ -138,9 +167,9 @@ with c1:
         """
         <div class="feature-card">
             <div class="card-icon">📐</div>
-            <div class="card-title">Cálculo Integral</div>
+            <div class="card-title">Cálculo</div>
             <p style="color: var(--muted); font-size: 0.95rem;">
-                Integração por Riemann, Simpson e Trapézios. Inclui visualização de partições e diagnósticos de erro em tempo real.
+                Limites, integrais e análise de convergência com visualização de partições e diagnósticos de erro em tempo real.
             </p>
         </div>
         """, unsafe_allow_html=True
@@ -151,9 +180,9 @@ with c2:
         """
         <div class="feature-card">
             <div class="card-icon">📉</div>
-            <div class="card-title">Análise de Erro</div>
+            <div class="card-title">Processos Estocásticos</div>
             <p style="color: var(--muted); font-size: 0.95rem;">
-                Módulo de convergência Log-Log para estimativa da ordem observada (slope) e validação de métodos numéricos.
+                Movimento browniano, simulação Monte Carlo e análise do expoente de Hurst para séries temporais.
             </p>
         </div>
         """, unsafe_allow_html=True
@@ -163,10 +192,10 @@ with c3:
     st.markdown(
         """
         <div class="feature-card">
-            <div class="card-icon">🧬</div>
-            <div class="card-title">Simbólico & Numérico</div>
+            <div class="card-icon">💹</div>
+            <div class="card-title">Finanças Quantitativas</div>
             <p style="color: var(--muted); font-size: 0.95rem;">
-                Parsing robusto via SymPy, permitindo a transição direta entre funções matemáticas teóricas e avaliação NumPy.
+                Black-Scholes, precificação de opções, VaR e Greeks. Em desenvolvimento.
             </p>
         </div>
         """, unsafe_allow_html=True
@@ -175,7 +204,7 @@ with c3:
 st.markdown("<div class='hr'></div>", unsafe_allow_html=True)
 
 # ------------------------------------------------------------
-# 5) ROADMAP E SINTAXE (DETALHES TÉCNICOS)
+# 6) ROADMAP E SINTAXE
 # ------------------------------------------------------------
 col_road, col_syntax = st.columns([1, 1], gap="large")
 
@@ -183,11 +212,11 @@ with col_road:
     st.markdown("### 🚀 Roadmap de Desenvolvimento")
     st.markdown(
         """
-        Atualmente em fase de expansão de bibliotecas:
-        - ✅ **v1.0:** Módulo de Integração Numérica.
-        - 🔄 **v1.1:** Módulo de Álgebra Linear.
-        - 📅 **v1.2:** Módulo de Equações Diferenciais e Sistemas Dinâmicos.
-        - 📅 **v1.3:** Otimização Não-Linear e Pesquisa Operacional
+        - ✅ **v1.0:** Módulo de Integração Numérica
+        - ✅ **v1.1:** Módulo de Limites + Navegação por seções
+        - 🔄 **v1.2:** Álgebra Linear
+        - 📅 **v1.3:** Finanças Quantitativas (Black-Scholes, VaR)
+        - 📅 **v1.4:** Otimização e Fronteira de Markowitz
         """
     )
 
@@ -205,7 +234,7 @@ with col_syntax:
 st.markdown("<div class='hr'></div>", unsafe_allow_html=True)
 
 # ------------------------------------------------------------
-# 6) CONTATO E INFORMAÇÕES PESSOAIS
+# 7) CONTATO E INFORMAÇÕES PESSOAIS
 # ------------------------------------------------------------
 inf_left, inf_right = st.columns([1.5, 1])
 
@@ -243,21 +272,14 @@ with inf_right:
     )
 
 # ------------------------------------------------------------
-# 7) RODAPÉ
+# 8) RODAPÉ
 # ------------------------------------------------------------
 st.markdown(
     """
     <div class='footer'>
-        <strong>TEC Engine v1.0.4</strong> — The Everything Calculator<br>
+        <strong>TEC Engine v1.1.0</strong> — The Everything Calculator<br>
         Fellipe Almässy • 2026 • 
     </div>
     """,
     unsafe_allow_html=True
 )
-
-# Feedback no Sidebar para guiar o usuário
-st.sidebar.title("Navegação")
-st.sidebar.info("Acesse os módulos através do menu acima para iniciar as análises.")
-st.sidebar.markdown("---")
-st.sidebar.caption("Sincronizado com: SymPy 1.12 | NumPy 1.26")
-
