@@ -11,7 +11,7 @@ import streamlit as st
 st.set_page_config(page_title="Limites", layout="wide")
 
 # ----------------------------
-# 1) ESTILO (CSS) — idêntico ao integral_3d
+# 1) ESTILO (CSS)
 # ----------------------------
 st.markdown("""
 <style>
@@ -42,6 +42,13 @@ div[data-testid="stMetric"]{
 }
 .footer { text-align:center; color: var(--muted2); margin-top: 14px; font-size: 0.85rem; }
 .function-display { text-align: center; padding: 1.5rem 0; }
+.piece-box {
+  background: rgba(255,255,255,0.02);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 10px;
+  padding: 12px 16px;
+  margin-bottom: 8px;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -50,20 +57,52 @@ div[data-testid="stMetric"]{
 # ----------------------------
 x_sym = sp.Symbol("x", real=True)
 
-@st.cache_resource(show_spinner=False)
-def parse_funcao(expressao: str):
-    locals_map = {
-        "x": x_sym,
-        "sin": sp.sin, "cos": sp.cos, "tan": sp.tan,
-        "exp": sp.exp, "log": sp.log, "sqrt": sp.sqrt,
-        "Abs": sp.Abs, "abs": sp.Abs, "pi": sp.pi,
-    }
+LOCALS_MAP = {
+    "x": x_sym,
+    "sin": sp.sin, "cos": sp.cos, "tan": sp.tan,
+    "exp": sp.exp, "log": sp.log, "sqrt": sp.sqrt,
+    "Abs": sp.Abs, "abs": sp.Abs, "pi": sp.pi, "E": sp.E,
+}
+
+
+def parse_simples(expressao: str):
+    """Converte string de função simples em (callable, expr_sympy)."""
     try:
-        expr = sp.sympify(expressao, locals=locals_map)
-    except (sp.SympifyError, SyntaxError):
-        raise ValueError(f"Não consegui interpretar `{expressao}`. Use sintaxe SymPy: ex. sin(x)/x, x**2 - 1.")
+        expr = sp.sympify(expressao, locals=LOCALS_MAP)
+    except Exception:
+        raise ValueError(f"Não consegui interpretar `{expressao}`.")
     f = sp.lambdify(x_sym, expr, modules=["numpy"])
     return f, expr
+
+
+def parse_piecewise(pecas: list[dict]):
+    """
+    Recebe lista de dicts {"expr": str, "cond": str} e monta sp.Piecewise.
+    O último pedaço pode ter condição "otherwise" para atuar como else.
+    """
+    partes_sym = []
+    for p in pecas:
+        expr_str = p["expr"].strip()
+        cond_str = p["cond"].strip()
+
+        try:
+            expr_sym = sp.sympify(expr_str, locals=LOCALS_MAP)
+        except Exception:
+            raise ValueError(f"Expressão inválida: `{expr_str}`")
+
+        if cond_str.lower() in ("otherwise", "else", "senão", ""):
+            cond_sym = True  # sp.Piecewise aceita True como "caso contrário"
+        else:
+            try:
+                cond_sym = sp.sympify(cond_str, locals=LOCALS_MAP)
+            except Exception:
+                raise ValueError(f"Condição inválida: `{cond_str}`")
+
+        partes_sym.append((expr_sym, cond_sym))
+
+    expr_pw = sp.Piecewise(*partes_sym)
+    f = sp.lambdify(x_sym, expr_pw, modules=["numpy"])
+    return f, expr_pw
 
 
 def calcular_limite(f, ponto: float, delta: float, tolerancia: float) -> dict:
@@ -71,10 +110,10 @@ def calcular_limite(f, ponto: float, delta: float, tolerancia: float) -> dict:
     lim_dir = float(f(ponto + delta))
     existe   = abs(lim_esq - lim_dir) <= tolerancia
     return {
-        "existe":    existe,
-        "lim_esq":   lim_esq,
-        "lim_dir":   lim_dir,
-        "lim_final": (lim_esq + lim_dir) / 2 if existe else None,
+        "existe":      existe,
+        "lim_esq":     lim_esq,
+        "lim_dir":     lim_dir,
+        "lim_final":   (lim_esq + lim_dir) / 2 if existe else None,
         "delta_usado": delta,
     }
 
@@ -94,35 +133,29 @@ def theory_panel():
     st.markdown(
         "<span class='badge'>Definição de Limite</span> "
         "<span class='badge'>Limites Laterais</span> "
+        "<span class='badge'>Funções por Partes</span> "
         "<span class='badge'>Método Numérico</span>",
         unsafe_allow_html=True,
     )
-    with st.expander("Abrir teoria completa (definição, laterais, método numérico)", expanded=False):
+    with st.expander("Abrir teoria completa", expanded=False):
         st.markdown("### Definição Formal (ε-δ)")
-        st.markdown("Dizemos que o limite de f(x) quando x tende a x₀ é L se:")
         st.latex(r"\forall\,\varepsilon > 0,\;\exists\,\delta > 0 \;\text{ tal que }\; 0 < |x - x_0| < \delta \;\Rightarrow\; |f(x) - L| < \varepsilon")
-        st.markdown("O ponto x₀ em si **não precisa estar no domínio** de f — o limite descreve o comportamento de aproximação, não o valor em x₀.")
+        st.markdown("O ponto x₀ **não precisa estar no domínio** de f.")
 
         st.markdown("---")
         st.markdown("### Limites Laterais")
-        st.markdown("O limite existe se e somente se os dois limites laterais existem **e são iguais**:")
         st.latex(r"\lim_{x \to x_0} f(x) = L \iff \lim_{x \to x_0^-} f(x) = \lim_{x \to x_0^+} f(x) = L")
-        st.markdown("Caso clássico onde o limite **não existe**: função sinal em x=0, onde o limite pela esquerda é -1 e pela direita é +1.")
 
         st.markdown("---")
-        st.markdown("### Método Numérico Usado Aqui")
-        st.markdown("Este módulo estima o limite avaliando f em dois pontos próximos de x₀:")
-        st.latex(r"\text{lim esq} \approx f(x_0 - \delta), \qquad \text{lim dir} \approx f(x_0 + \delta)")
-        st.markdown("Se a diferença entre os dois for menor que a tolerância definida, o limite é estimado como a média:")
-        st.latex(r"L \approx \frac{f(x_0 - \delta) + f(x_0 + \delta)}{2}")
-        st.markdown("""
-**Limitações do método:**
-- δ muito grande → estimativa imprecisa (não captura o comportamento local)
-- δ muito pequeno → erros de ponto flutuante
-- Funções com oscilação rápida perto de x₀ podem enganar o método
+        st.markdown("### Funções por Partes")
+        st.markdown("Em funções por partes, o ponto crítico é sempre a **fronteira entre os pedaços** — exatamente onde os limites laterais podem divergir:")
+        st.latex(r"f(x) = \begin{cases} x^2 & x < 0 \\ 2x + 1 & x \geq 0 \end{cases}")
+        st.markdown("Aqui, lim esq em x=0 = 0, lim dir = 1 → limite **não existe**.")
 
-**O SymPy calcula o limite simbólico exato** quando possível — compare os dois resultados para validar.
-        """)
+        st.markdown("---")
+        st.markdown("### Método Numérico")
+        st.latex(r"L \approx \frac{f(x_0 - \delta) + f(x_0 + \delta)}{2}")
+        st.markdown("Válido quando `|f(x₀-δ) - f(x₀+δ)| ≤ tolerância`. O SymPy calcula o exato quando possível.")
 
 
 # ----------------------------
@@ -143,14 +176,11 @@ def gerar_grafico(f, expr, ponto: float, resultado: dict) -> go.Figure:
 
     fig = go.Figure()
 
-    # Glow
     fig.add_trace(go.Scatter(
         x=xs, y=ys, mode="lines",
         line=dict(color="rgba(255,75,75,0.18)", width=10),
         hoverinfo="skip", showlegend=False,
     ))
-
-    # Curva principal
     fig.add_trace(go.Scatter(
         x=xs, y=ys, mode="lines",
         name="f(x)",
@@ -158,20 +188,16 @@ def gerar_grafico(f, expr, ponto: float, resultado: dict) -> go.Figure:
         hovertemplate="x=%{x:.4f}<br>f(x)=%{y:.4f}<extra></extra>",
     ))
 
-    # Linha vertical em x₀
     fig.add_vline(x=ponto, line=dict(color="rgba(255,255,255,0.3)", dash="dash", width=1.5))
 
     delta = resultado.get("delta_usado", 0.001)
 
-    # Limite pela esquerda
     fig.add_trace(go.Scatter(
         x=[ponto - delta], y=[resultado["lim_esq"]],
         mode="markers",
         name=f"lim esq = {resultado['lim_esq']:.4f}",
         marker=dict(color="#1E90FF", size=11, symbol="circle"),
     ))
-
-    # Limite pela direita
     fig.add_trace(go.Scatter(
         x=[ponto + delta], y=[resultado["lim_dir"]],
         mode="markers",
@@ -179,7 +205,6 @@ def gerar_grafico(f, expr, ponto: float, resultado: dict) -> go.Figure:
         marker=dict(color="#FFB347", size=11, symbol="circle"),
     ))
 
-    # Limite final
     if resultado["existe"]:
         fig.add_trace(go.Scatter(
             x=[ponto], y=[resultado["lim_final"]],
@@ -210,59 +235,133 @@ st.caption("Estimativa numérica e cálculo simbólico exato via SymPy")
 st.markdown("<div class='hr'></div>", unsafe_allow_html=True)
 
 theory_panel()
-
 st.markdown("<div class='hr'></div>", unsafe_allow_html=True)
 
+
 # ----------------------------
-# 6) SIDEBAR
+# 6) SIDEBAR — parâmetros fixos
 # ----------------------------
 st.sidebar.header("Controles")
 
-exemplos = {
-    "sin(x)/x  →  x=0":      ("sin(x)/x",        0.0),
-    "(x²-4)/(x-2)  →  x=2":  ("(x**2-4)/(x-2)",  2.0),
-    "exp(-x²)  →  x=0":      ("exp(-x**2)",       0.0),
-    "|x|/x  →  x=0":         ("Abs(x)/x",         0.0),
-    "1/x  →  x=0":           ("1/x",              0.0),
-}
-
-exemplo_escolhido = st.sidebar.selectbox("Exemplos rápidos", list(exemplos.keys()))
-default_expr, default_ponto = exemplos[exemplo_escolhido]
-
-expressao = st.sidebar.text_input("f(x) (Sintaxe SymPy)", value=default_expr)
-ponto     = st.sidebar.number_input("Ponto x₀", value=default_ponto, step=0.1, format="%.4f")
+ponto = st.sidebar.number_input("Ponto x₀", value=0.0, step=0.1, format="%.4f")
 
 st.sidebar.markdown("---")
-delta      = st.sidebar.number_input("δ (delta)", value=0.001, min_value=1e-10, max_value=1.0, format="%.6f",
-                                      help="Distância ao redor de x₀ usada para estimar os limites laterais.")
-tolerancia = st.sidebar.number_input("Tolerância", value=0.01, min_value=1e-10, max_value=10.0, format="%.6f",
-                                      help="Diferença máxima entre limites laterais para aceitar que o limite existe.")
+delta      = st.sidebar.number_input("δ (delta)", value=0.001, min_value=1e-10, max_value=1.0, format="%.6f")
+tolerancia = st.sidebar.number_input("Tolerância", value=0.01, min_value=1e-10, max_value=10.0, format="%.6f")
 
 st.sidebar.markdown("---")
-st.sidebar.caption("Nota: funções com descontinuidades severas podem enganar o método numérico. Compare sempre com o resultado simbólico.")
+st.sidebar.caption("Condições aceitam: x < 0, x >= 2, x == 1. Use 'otherwise' no último pedaço para cobrir o resto.")
 
 calcular = st.sidebar.button("Calcular limite", type="primary", use_container_width=True)
 
-# ----------------------------
-# 7) PARSE
-# ----------------------------
-try:
-    f, expr_sym = parse_funcao(expressao)
-except ValueError as e:
-    st.error(str(e))
-    st.stop()
 
 # ----------------------------
-# 8) DISPLAY DA FUNÇÃO (sempre visível)
+# 7) MODO: SIMPLES OU POR PARTES
 # ----------------------------
-st.markdown("<div class='function-display'>", unsafe_allow_html=True)
-st.latex(r"f(x) = " + sp.latex(expr_sym))
-st.markdown("</div>", unsafe_allow_html=True)
+modo = st.radio(
+    "Tipo de função",
+    ["Função simples", "Função por partes"],
+    horizontal=True,
+)
+
+st.markdown("<div class='hr'></div>", unsafe_allow_html=True)
+
+f        = None
+expr_sym = None
+
+# ── Função simples ──────────────────────────────────────────
+if modo == "Função simples":
+    exemplos = {
+        "sin(x)/x  →  x=0":     "sin(x)/x",
+        "(x²-4)/(x-2)  →  x=2": "(x**2-4)/(x-2)",
+        "exp(-x²)  →  x=0":     "exp(-x**2)",
+        "|x|/x  →  x=0":        "Abs(x)/x",
+        "1/x  →  x=0":          "1/x",
+    }
+    exemplo = st.selectbox("Exemplos rápidos", list(exemplos.keys()))
+    expressao = st.text_input("f(x)", value=exemplos[exemplo])
+
+    try:
+        f, expr_sym = parse_simples(expressao)
+    except ValueError as e:
+        st.error(str(e))
+        st.stop()
+
+# ── Função por partes ────────────────────────────────────────
+else:
+    exemplos_pw = {
+        "Sinal (não existe em 0)": [
+            {"expr": "-1", "cond": "x < 0"},
+            {"expr": "1",  "cond": "otherwise"},
+        ],
+        "Remendada (existe em 0)": [
+            {"expr": "x**2", "cond": "x < 0"},
+            {"expr": "x",    "cond": "otherwise"},
+        ],
+        "Salto em x=2": [
+            {"expr": "x + 1", "cond": "x < 2"},
+            {"expr": "x + 3", "cond": "otherwise"},
+        ],
+    }
+
+    exemplo_pw = st.selectbox("Exemplos rápidos", list(exemplos_pw.keys()))
+
+    # Estado da sessão para controlar número de pedaços
+    if "n_pecas" not in st.session_state:
+        st.session_state.n_pecas = len(exemplos_pw[exemplo_pw])
+
+    # Sincroniza com o exemplo escolhido
+    defaults = exemplos_pw[exemplo_pw]
+    n = st.session_state.n_pecas
+
+    st.markdown("#### Defina os pedaços da função")
+    st.markdown("<div class='small-muted'>Sintaxe das condições: x &lt; 0 &nbsp;|&nbsp; x &gt;= 2 &nbsp;|&nbsp; otherwise</div>", unsafe_allow_html=True)
+    st.markdown("")
+
+    pecas_input = []
+    for i in range(n):
+        d_expr = defaults[i]["expr"] if i < len(defaults) else ""
+        d_cond = defaults[i]["cond"] if i < len(defaults) else ""
+
+        with st.container():
+            st.markdown(f"<div class='piece-box'>", unsafe_allow_html=True)
+            col_num, col_expr, col_cond = st.columns([0.3, 1.5, 1.5])
+            col_num.markdown(f"<br><strong>f{i+1}</strong>", unsafe_allow_html=True)
+            expr_i = col_expr.text_input(f"f(x)", value=d_expr, key=f"expr_{i}", label_visibility="collapsed", placeholder="ex: x**2")
+            cond_i = col_cond.text_input(f"quando", value=d_cond, key=f"cond_{i}", label_visibility="collapsed", placeholder="ex: x < 0")
+            st.markdown("</div>", unsafe_allow_html=True)
+
+            pecas_input.append({"expr": expr_i, "cond": cond_i})
+
+    col_add, col_rem, _ = st.columns([1, 1, 4])
+    if col_add.button("＋ Adicionar pedaço"):
+        st.session_state.n_pecas += 1
+        st.rerun()
+    if col_rem.button("－ Remover último") and st.session_state.n_pecas > 1:
+        st.session_state.n_pecas -= 1
+        st.rerun()
+
+    # Tenta parsear em tempo real pra dar feedback visual
+    try:
+        f, expr_sym = parse_piecewise(pecas_input)
+    except ValueError as e:
+        st.error(str(e))
+        st.stop()
+
+
+# ----------------------------
+# 8) DISPLAY DA FUNÇÃO
+# ----------------------------
+if expr_sym is not None:
+    st.markdown("<div class='function-display'>", unsafe_allow_html=True)
+    st.latex(r"f(x) = " + sp.latex(expr_sym))
+    st.markdown("</div>", unsafe_allow_html=True)
+
 
 # ----------------------------
 # 9) CÁLCULO E RESULTADO
 # ----------------------------
-if calcular:
+if calcular and f is not None:
     try:
         resultado = calcular_limite(f, ponto, delta=delta, tolerancia=tolerancia)
     except Exception as e:
@@ -271,7 +370,6 @@ if calcular:
 
     lim_sim = limite_simbolico(expr_sym, ponto)
 
-    # Métricas
     m1, m2, m3, m4 = st.columns(4)
     m1.metric(
         "Resultado numérico",
@@ -291,7 +389,6 @@ if calcular:
 
     st.markdown("<div class='hr'></div>", unsafe_allow_html=True)
 
-    # Banner
     if resultado["existe"]:
         st.success("✓ O limite existe")
         st.latex(rf"\lim_{{x \to {ponto}}} f(x) \approx {resultado['lim_final']:.6f}")
@@ -302,7 +399,6 @@ if calcular:
 
     st.markdown("<div class='hr'></div>", unsafe_allow_html=True)
 
-    # Gráfico
     st.markdown("<div class='small-muted'>f(x) em torno de x₀:</div>", unsafe_allow_html=True)
     try:
         fig = gerar_grafico(f, expr_sym, ponto, resultado)
