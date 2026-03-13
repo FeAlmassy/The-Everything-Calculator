@@ -5,26 +5,11 @@ import streamlit as st
 # ------------------------------------------------------------
 pg = st.navigation({
     "Cálculo": [
-        st.Page("pages/calculo/integral_3d.py",  title="Integral 3D",  icon="📐"),
-        st.Page("pages/calculo/limite.py",        title="Limites",      icon="∂"),
+        st.Page("pages/Calculo/integral_3d.py", title="Integral 3D", icon="📐"),
+        st.Page("pages/Calculo/limite.py",       title="Limites",     icon="∂"),
     ],
     "Álgebra Linear": [
-        # st.Page("pages/algebra_linear/...", title="...", icon="..."),
-    ],
-    "Probabilidade & Estatística": [
-        # st.Page("pages/probabilidade_estatistica/...", title="...", icon="..."),
-    ],
-    "Finanças Quantitativas": [
-        # st.Page("pages/financas_quant/...", title="...", icon="..."),
-    ],
-    "Processos Estocásticos": [
-        st.Page("pages/processos_estocasticos/hurst.py", title="Hurst", icon="📈"),
-    ],
-    "Otimização": [
-        # st.Page("pages/otimizacao/...", title="...", icon="..."),
-    ],
-    "Análise Numérica": [
-        # st.Page("pages/analise_numerica/...", title="...", icon="..."),
+        st.Page("pages/Algebra_Linear/Vetores.py", title="Vetores", icon="📊"),
     ],
 })
 
