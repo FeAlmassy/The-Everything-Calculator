@@ -12,6 +12,10 @@ pg = st.navigation({
     ],
     "Álgebra Linear": [
         st.Page("pages/Algebra_Linear/Vetores.py", title="Vetores", icon="📊"),
+
+    ],
+    "AREA DE TESTES": [
+        st.Page("pages/AREA_DE_TESTES/teste.py", title="teste", icon="📊"),
     ],
 })
 
