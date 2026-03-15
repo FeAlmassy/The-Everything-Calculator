@@ -15,7 +15,7 @@ pg = st.navigation({
 
     ],
     "AREA DE TESTES": [
-        st.Page("pages/AREA_DE_TESTES/teste.py", title="teste", icon="📊"),
+        st.Page("pages/Area_Testes/teste.py", title="teste", icon="📊"),
     ],
 })
 
