@@ -1,5 +1,5 @@
-# markov_tab.py
-# Aba de Cadeias de Markov — The Everything Calculator
+# pages/Area_Testes/markov.py
+# Cadeias de Markov — The Everything Calculator
 # ------------------------------------------------------------
 # - Simulação interativa com animação em tempo real
 # - Grafo da cadeia com Plotly (arestas + pesos)
@@ -11,7 +11,6 @@
 
 from __future__ import annotations
 
-import time
 from typing import Optional
 
 import numpy as np
@@ -21,7 +20,56 @@ import streamlit as st
 
 
 # ----------------------------
-# EXEMPLOS PRÁTICOS
+# 0) CONFIG DA PÁGINA
+# ----------------------------
+st.set_page_config(page_title="Cadeias de Markov", layout="wide")
+
+
+# ----------------------------
+# 1) CSS — mesmo estilo do TEC
+# ----------------------------
+st.markdown(
+    """
+<style>
+:root {
+  --bg: #0e1117;
+  --border: rgba(255,255,255,0.08);
+  --muted: rgba(229,231,235,0.60);
+  --muted2: rgba(229,231,235,0.40);
+  --accent: #FF4B4B;
+  --accent2: #1E90FF;
+}
+
+.main { background-color: var(--bg); }
+section[data-testid="stSidebar"] { background-color: #0b1020; border-right: 1px solid var(--border); }
+div[data-testid="stMetric"]{
+  background: linear-gradient(180deg, rgba(255,255,255,0.045), rgba(255,255,255,0.018));
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 14px;
+  padding: 14px;
+}
+
+.hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 0.75rem 0 1.0rem 0;
+}
+
+.small-muted { color: var(--muted); font-size: 0.92rem; }
+.badge {
+  display:inline-block; padding: 0.18rem 0.55rem; border-radius: 999px;
+  background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.08);
+  color: rgba(229,231,235,0.80); font-size: 0.82rem;
+}
+.footer { text-align:center; color: var(--muted2); margin-top: 14px; font-size: 0.85rem; }
+</style>
+""",
+    unsafe_allow_html=True,
+)
+
+
+# ----------------------------
+# 2) EXEMPLOS PRÁTICOS
 # ----------------------------
 EXEMPLOS_MARKOV = {
     "Clima (Sol / Nublado / Chuva)": {
@@ -80,15 +128,12 @@ CORES_ESTADOS = ["#FF4B4B", "#1E90FF", "#2ECC71", "#F39C12", "#9B59B6"]
 
 
 # ----------------------------
-# FUNÇÕES DE COMPUTAÇÃO
+# 3) FUNÇÕES DE COMPUTAÇÃO
 # ----------------------------
 @st.cache_data(show_spinner=False)
 def validar_matriz(mat: tuple) -> tuple[bool, str]:
-    """Valida se é uma matriz de transição estocástica."""
     P = np.array(mat)
     n = P.shape[0]
-    if P.shape != (n, n):
-        return False, "Matriz não é quadrada."
     if np.any(P < 0):
         return False, "Existem probabilidades negativas."
     row_sums = P.sum(axis=1)
@@ -100,7 +145,6 @@ def validar_matriz(mat: tuple) -> tuple[bool, str]:
 
 @st.cache_data(show_spinner=False)
 def calcular_estacionaria(mat: tuple) -> Optional[np.ndarray]:
-    """Calcula a distribuição estacionária via autovetor esquerdo."""
     P = np.array(mat)
     try:
         vals, vecs = np.linalg.eig(P.T)
@@ -115,7 +159,6 @@ def calcular_estacionaria(mat: tuple) -> Optional[np.ndarray]:
 
 @st.cache_data(show_spinner=False)
 def evolucao_distribuicao(mat: tuple, dist_inicial: tuple, n_passos: int) -> np.ndarray:
-    """Computa P^t aplicado à distribuição inicial ao longo de n_passos."""
     P = np.array(mat)
     v = np.array(dist_inicial, dtype=float)
     v /= v.sum()
@@ -128,52 +171,46 @@ def evolucao_distribuicao(mat: tuple, dist_inicial: tuple, n_passos: int) -> np.
 
 @st.cache_data(show_spinner=False)
 def simular_cadeia(mat: tuple, estado_inicial: int, n_passos: int, seed: int) -> list[int]:
-    """Simula uma trajetória da cadeia de Markov."""
     rng = np.random.default_rng(seed)
     P = np.array(mat)
     n = P.shape[0]
     trajetoria = [estado_inicial]
     estado = estado_inicial
     for _ in range(n_passos):
-        estado = rng.choice(n, p=P[estado])
+        estado = int(rng.choice(n, p=P[estado]))
         trajetoria.append(estado)
     return trajetoria
 
 
 # ----------------------------
-# GRÁFICOS
+# 4) GRÁFICOS
 # ----------------------------
 def make_grafo_markov(estados: list[str], P: np.ndarray, pi: Optional[np.ndarray]) -> go.Figure:
-    """Cria grafo da cadeia com layout circular e arestas ponderadas."""
     n = len(estados)
     angulos = np.linspace(0, 2 * np.pi, n, endpoint=False) - np.pi / 2
-    raio = 1.0
-
-    xs = raio * np.cos(angulos)
-    ys = raio * np.sin(angulos)
+    xs = np.cos(angulos)
+    ys = np.sin(angulos)
 
     fig = go.Figure()
 
-    # Arestas
     for i in range(n):
         for j in range(n):
-            p_ij = P[i, j]
+            p_ij = float(P[i, j])
             if p_ij < 0.01:
                 continue
 
-            xi, yi = xs[i], ys[i]
-            xj, yj = xs[j], yj = xs[j], ys[j]
+            xi, yi = float(xs[i]), float(ys[i])
+            xj, yj = float(xs[j]), float(ys[j])
 
             if i == j:
-                # Self-loop: pequeno arco anotado
-                loop_x = xi + 0.28 * np.cos(angulos[i])
-                loop_y = yi + 0.28 * np.sin(angulos[i])
+                loop_x = xi + 0.30 * float(np.cos(angulos[i]))
+                loop_y = yi + 0.30 * float(np.sin(angulos[i]))
                 fig.add_trace(go.Scatter(
                     x=[loop_x], y=[loop_y],
                     mode="markers",
                     marker=dict(
                         symbol="circle-open",
-                        size=28,
+                        size=30,
                         color=CORES_ESTADOS[i % len(CORES_ESTADOS)],
                         line=dict(width=max(1.5, p_ij * 5), color=CORES_ESTADOS[i % len(CORES_ESTADOS)]),
                     ),
@@ -184,30 +221,26 @@ def make_grafo_markov(estados: list[str], P: np.ndarray, pi: Optional[np.ndarray
                     x=loop_x, y=loop_y,
                     text=f"<b>{p_ij:.2f}</b>",
                     showarrow=False,
-                    font=dict(size=9, color="rgba(229,231,235,0.9)"),
+                    font=dict(size=10, color="rgba(229,231,235,0.95)"),
                     bgcolor="rgba(14,17,23,0.85)",
                 )
             else:
-                # Aresta direta com desvio para evitar sobreposição
                 dx, dy = xj - xi, yj - yi
-                mid_x = (xi + xj) / 2 - dy * 0.18
-                mid_y = (yi + yj) / 2 + dx * 0.18
+                mid_x = (xi + xj) / 2 - dy * 0.20
+                mid_y = (yi + yj) / 2 + dx * 0.20
+                width = max(1.0, p_ij * 7)
+                alpha = 0.30 + 0.65 * p_ij
+                cor = CORES_ESTADOS[i % len(CORES_ESTADOS)]
 
-                width = max(1.0, p_ij * 6)
-                alpha = 0.3 + 0.6 * p_ij
-                color_src = CORES_ESTADOS[i % len(CORES_ESTADOS)]
-
-                # Curva via pontos intermediários
                 fig.add_trace(go.Scatter(
                     x=[xi, mid_x, xj],
                     y=[yi, mid_y, yj],
                     mode="lines",
-                    line=dict(width=width, color=color_src.replace("#", "rgba(").replace("FF4B4B", "255,75,75") + f",{alpha:.2f})"),
+                    line=dict(width=width, color=cor),
+                    opacity=alpha,
                     showlegend=False,
                     hoverinfo="skip",
                 ))
-
-                # Anotação no meio da aresta
                 fig.add_annotation(
                     x=mid_x, y=mid_y,
                     text=f"<b>{p_ij:.2f}</b>",
@@ -217,13 +250,15 @@ def make_grafo_markov(estados: list[str], P: np.ndarray, pi: Optional[np.ndarray
                     borderpad=2,
                 )
 
-    # Nós (tamanho proporcional à dist. estacionária)
-    tamanhos = [45] * n
-    if pi is not None:
-        tamanhos = [30 + 60 * float(pi[i]) for i in range(n)]
+    # Nós
+    tamanhos = [30 + 60 * float(pi[i]) for i in range(n)] if pi is not None else [45] * n
+    hover = [
+        f"<b>{est}</b><br>π = {float(pi[i]):.4f}" if pi is not None else f"<b>{est}</b>"
+        for i, est in enumerate(estados)
+    ]
 
     fig.add_trace(go.Scatter(
-        x=xs, y=ys,
+        x=list(xs), y=list(ys),
         mode="markers+text",
         marker=dict(
             size=tamanhos,
@@ -234,17 +269,14 @@ def make_grafo_markov(estados: list[str], P: np.ndarray, pi: Optional[np.ndarray
         textposition="middle center",
         textfont=dict(size=11, color="white", family="monospace"),
         showlegend=False,
-        hovertemplate=[
-            f"<b>{est}</b><br>π = {float(pi[i]):.4f}" if pi is not None else f"<b>{est}</b>"
-            for i, est in enumerate(estados)
-        ],
+        hovertemplate=[h + "<extra></extra>" for h in hover],
     ))
 
     fig.update_layout(
         template="plotly_dark",
         margin=dict(l=20, r=20, t=20, b=20),
-        xaxis=dict(range=[-1.6, 1.6], showgrid=False, zeroline=False, showticklabels=False),
-        yaxis=dict(range=[-1.6, 1.6], showgrid=False, zeroline=False, showticklabels=False, scaleanchor="x"),
+        xaxis=dict(range=[-1.65, 1.65], showgrid=False, zeroline=False, showticklabels=False),
+        yaxis=dict(range=[-1.65, 1.65], showgrid=False, zeroline=False, showticklabels=False, scaleanchor="x"),
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
         height=380,
@@ -253,7 +285,6 @@ def make_grafo_markov(estados: list[str], P: np.ndarray, pi: Optional[np.ndarray
 
 
 def make_evolucao_plot(historico: np.ndarray, estados: list[str], pi: Optional[np.ndarray]) -> go.Figure:
-    """Evolução da distribuição ao longo do tempo com linhas estacionárias."""
     fig = go.Figure()
     passos = np.arange(historico.shape[0])
 
@@ -291,41 +322,34 @@ def make_evolucao_plot(historico: np.ndarray, estados: list[str], pi: Optional[n
 
 
 def make_trajetoria_plot(trajetoria: list[int], estados: list[str]) -> go.Figure:
-    """Plota a trajetória da simulação como step chart."""
-    fig = go.Figure()
-
     n = len(trajetoria)
     cores_traj = [CORES_ESTADOS[s % len(CORES_ESTADOS)] for s in trajetoria]
 
+    fig = go.Figure()
     fig.add_trace(go.Scatter(
         x=list(range(n)),
         y=trajetoria,
         mode="lines+markers",
-        line=dict(color="rgba(30,144,255,0.6)", width=1.5, shape="hv"),
-        marker=dict(
-            size=6,
-            color=cores_traj,
-            line=dict(color="rgba(255,255,255,0.3)", width=0.5),
-        ),
+        line=dict(color="rgba(30,144,255,0.55)", width=1.5, shape="hv"),
+        marker=dict(size=5, color=cores_traj, line=dict(color="rgba(255,255,255,0.3)", width=0.5)),
         name="Trajetória",
         hovertemplate="t=%{x}<br>Estado=%{text}<extra></extra>",
         text=[estados[s] for s in trajetoria],
     ))
 
-    # Frequência empírica
     freq = np.bincount(trajetoria, minlength=len(estados)) / n
     for i, (est, f) in enumerate(zip(estados, freq)):
         fig.add_annotation(
-            x=n * 0.98, y=i,
-            text=f"  {est}: {f:.3f}",
+            x=n * 1.01, y=i,
+            text=f"{est}: {f:.3f}",
             showarrow=False,
             font=dict(size=9, color=CORES_ESTADOS[i % len(CORES_ESTADOS)]),
-            xanchor="right",
+            xanchor="left",
         )
 
     fig.update_layout(
         template="plotly_dark",
-        margin=dict(l=0, r=0, t=30, b=0),
+        margin=dict(l=0, r=100, t=30, b=0),
         title="Trajetória Simulada",
         xaxis_title="Passo t",
         yaxis=dict(
@@ -340,7 +364,6 @@ def make_trajetoria_plot(trajetoria: list[int], estados: list[str]) -> go.Figure
 
 
 def make_heatmap_transicao(P: np.ndarray, estados: list[str]) -> go.Figure:
-    """Heatmap da matriz de transição."""
     fig = go.Figure(data=go.Heatmap(
         z=P,
         x=estados,
@@ -370,7 +393,6 @@ def make_heatmap_transicao(P: np.ndarray, estados: list[str]) -> go.Figure:
 
 
 def make_convergencia_markov(historico: np.ndarray, pi: np.ndarray) -> go.Figure:
-    """Distância total de variação até a estacionária."""
     passos = np.arange(historico.shape[0])
     tv = 0.5 * np.sum(np.abs(historico - pi[None, :]), axis=1)
 
@@ -384,284 +406,286 @@ def make_convergencia_markov(historico: np.ndarray, pi: np.ndarray) -> go.Figure
         fillcolor="rgba(255,75,75,0.08)",
         hovertemplate="t=%{x}<br>TV=%{y:.6f}<extra></extra>",
     ))
+    use_log = bool(tv[1:].max() > 1e-10 and tv[1:].min() > 0)
     fig.update_layout(
         template="plotly_dark",
         margin=dict(l=0, r=0, t=30, b=0),
         title="Convergência: Distância de Variação Total ||μₜ − π||_TV",
         xaxis_title="Passo t",
         yaxis_title="||μₜ − π||_TV",
-        yaxis_type="log" if tv[1:].max() > 0 else "linear",
+        yaxis_type="log" if use_log else "linear",
     )
     return fig
 
 
 # ----------------------------
-# EDITOR DE MATRIZ
+# 5) EDITOR DE MATRIZ (modo personalizado)
 # ----------------------------
 def editor_matriz(estados: list[str], P_default: np.ndarray) -> tuple[list[str], np.ndarray]:
-    """Interface para editar estados e matriz de transição."""
     n = len(estados)
-
-    # Editar nomes dos estados
     cols_nomes = st.columns(n)
     novos_estados = []
     for i, col in enumerate(cols_nomes):
-        nome = col.text_input(f"Estado {i+1}", value=estados[i], key=f"est_{i}_{id(estados)}", label_visibility="collapsed")
-        novos_estados.append(nome if nome.strip() else estados[i])
+        nome = col.text_input(f"Estado {i+1}", value=estados[i], key=f"est_nome_{i}", label_visibility="collapsed")
+        novos_estados.append(nome.strip() if nome.strip() else estados[i])
 
-    # Editar linhas da matriz
     P_nova = np.zeros((n, n))
-    st.markdown("<div class='small-muted'>Matriz de transição (linha i → coluna j):</div>", unsafe_allow_html=True)
+    st.markdown("<div class='small-muted'>Matriz de transição — cada linha deve somar 1 (normalização automática):</div>", unsafe_allow_html=True)
 
-    cols_header = st.columns([1.2] + [1] * n)
-    cols_header[0].markdown("**De \\ Para**")
+    header = st.columns([1.2] + [1] * n)
+    header[0].markdown("**De \\ Para**")
     for j, est in enumerate(novos_estados):
-        cols_header[j + 1].markdown(f"**{est}**")
+        header[j + 1].markdown(f"**{est}**")
 
     for i in range(n):
-        cols_row = st.columns([1.2] + [1] * n)
-        cols_row[0].markdown(f"**{novos_estados[i]}**")
-        soma = 0.0
+        row_cols = st.columns([1.2] + [1] * n)
+        row_cols[0].markdown(f"**{novos_estados[i]}**")
         vals_row = []
         for j in range(n):
-            val = cols_row[j + 1].number_input(
+            val = row_cols[j + 1].number_input(
                 f"P[{i},{j}]",
                 min_value=0.0, max_value=1.0,
                 value=float(P_default[i, j]),
                 step=0.05, format="%.2f",
-                key=f"p_{i}_{j}_{id(estados)}",
+                key=f"p_{i}_{j}",
                 label_visibility="collapsed",
             )
             vals_row.append(val)
-            soma += val
-        # Normalização automática por linha
-        if soma > 0:
-            P_nova[i] = [v / soma for v in vals_row]
-        else:
-            P_nova[i] = [1.0 / n] * n
+        soma = sum(vals_row)
+        P_nova[i] = [v / soma for v in vals_row] if soma > 0 else [1.0 / n] * n
 
     return novos_estados, P_nova
 
 
 # ----------------------------
-# ABA PRINCIPAL
+# 6) CABEÇALHO
 # ----------------------------
-def render_markov_tab():
-    """Renderiza a aba de Cadeias de Markov no TEC."""
+st.title("Cadeias de Markov")
+st.caption("Processos estocásticos com a propriedade de Markov")
+st.markdown("<div class='hr'></div>", unsafe_allow_html=True)
 
-    st.markdown("### Cadeias de Markov")
-    st.caption("Processos estocásticos com memória sem história")
-    st.markdown("<div class='hr'></div>", unsafe_allow_html=True)
 
-    # ---------- TEORIA COLAPSÁVEL ----------
-    with st.expander("Teoria: o que é uma Cadeia de Markov?", expanded=False):
-        st.markdown("Uma cadeia de Markov é um processo estocástico com a **propriedade de Markov**:")
-        st.latex(r"\Pr(X_{t+1} = j \mid X_t = i,\, X_{t-1},\, \ldots) = \Pr(X_{t+1} = j \mid X_t = i) = P_{ij}")
-        st.markdown("O futuro depende **apenas do estado presente**, não da história.")
-        st.markdown("---")
-        st.markdown("**Matriz de Transição**")
-        st.latex(r"P = \begin{bmatrix} P_{11} & P_{12} & \cdots \\ P_{21} & P_{22} & \cdots \\ \vdots & & \ddots \end{bmatrix}, \quad \sum_j P_{ij} = 1 \; \forall i")
-        st.markdown("**Distribuição no passo t**")
-        st.latex(r"\mu_t = \mu_0 \cdot P^t")
-        st.markdown("**Distribuição Estacionária** — satisfaz")
-        st.latex(r"\pi = \pi P \quad \Longleftrightarrow \quad \pi \text{ é autovetor esquerdo de } P \text{ com autovalor } 1")
-        st.markdown("**Convergência** — para cadeias ergódicas:")
-        st.latex(r"\lim_{t \to \infty} \mu_t = \pi \quad \text{(independente de } \mu_0\text{)}")
-        st.markdown("A velocidade de convergência é ditada pelo **segundo maior autovalor em módulo** (spectral gap).")
-
-    st.markdown("<div class='hr'></div>", unsafe_allow_html=True)
-
-    # ---------- SIDEBAR: CONTROLES ----------
-    st.sidebar.markdown("---")
-    st.sidebar.header("Markov — Controles")
-
-    exemplo_nome = st.sidebar.selectbox(
-        "Exemplo",
-        list(EXEMPLOS_MARKOV.keys()),
-        index=0,
-    )
-    exemplo = EXEMPLOS_MARKOV[exemplo_nome]
-
-    # Para o modo personalizado, usa editor; para os outros, mostra só a matriz
-    if exemplo_nome == "Personalizado":
-        n_estados = st.sidebar.slider("Nº de estados", 2, 5, 3, key="n_estados_markov")
-        estados_default = [chr(65 + i) for i in range(n_estados)]
-        P_default = np.eye(n_estados) * 0.5 + np.ones((n_estados, n_estados)) * (0.5 / n_estados)
-        P_default /= P_default.sum(axis=1, keepdims=True)
-        estados_edit = estados_default
-        P_edit = P_default
-    else:
-        estados_edit = exemplo["estados"]
-        P_edit = exemplo["matriz"]
-        n_estados = len(estados_edit)
-
-    n_passos_evolucao = st.sidebar.slider("Passos de evolução", 10, 200, 60, step=5, key="passos_evolucao_markov")
-    n_passos_sim = st.sidebar.slider("Passos da simulação", 50, 2000, 300, step=50, key="passos_sim_markov")
-    seed_sim = st.sidebar.number_input("Seed da simulação", value=42, min_value=0, max_value=9999, step=1, key="seed_markov")
-
-    # Distribuição inicial
-    st.sidebar.markdown("**Distribuição Inicial μ₀**")
-    dist_cols = st.sidebar.columns(n_estados)
-    dist_inicial_raw = []
-    for i, col in enumerate(dist_cols):
-        v = col.number_input(
-            estados_edit[i],
-            min_value=0.0, max_value=1.0,
-            value=round(1.0 / n_estados, 2),
-            step=0.1, format="%.2f",
-            key=f"dist0_{i}_markov",
-        )
-        dist_inicial_raw.append(v)
-    s = sum(dist_inicial_raw)
-    if s > 0:
-        dist_inicial = tuple(v / s for v in dist_inicial_raw)
-    else:
-        dist_inicial = tuple(1.0 / n_estados for _ in range(n_estados))
-    st.sidebar.caption(f"μ₀ normalizado: {[f'{v:.3f}' for v in dist_inicial]}")
-
-    # Estado inicial para simulação
-    estado_inicial_nome = st.sidebar.selectbox("Estado inicial (simulação)", estados_edit, key="est_ini_markov")
-    estado_inicial_idx = estados_edit.index(estado_inicial_nome)
-
-    # ---------- EDITOR (modo personalizado) ----------
-    if exemplo_nome == "Personalizado":
-        st.markdown("#### Definir Cadeia")
-        estados_edit, P_edit = editor_matriz(estados_edit, P_edit)
-    else:
-        st.markdown(f"**{exemplo['emoji']} {exemplo_nome}** — {exemplo['descricao']}")
-
-    P = P_edit
-    estados = estados_edit
-    mat_tuple = tuple(map(tuple, P))
-
-    # ---------- VALIDAÇÃO ----------
-    valido, msg = validar_matriz(mat_tuple)
-    if not valido:
-        st.error(f"Matriz inválida: {msg}")
-        return
-
-    # ---------- COMPUTAÇÕES ----------
-    pi = calcular_estacionaria(mat_tuple)
-    historico = evolucao_distribuicao(mat_tuple, dist_inicial, n_passos_evolucao)
-    trajetoria = simular_cadeia(mat_tuple, estado_inicial_idx, n_passos_sim, int(seed_sim))
-
-    # ---------- MÉTRICAS PRINCIPAIS ----------
-    n_est = len(estados)
-    # Autovalores para spectral gap
-    autovalores = np.sort(np.abs(np.linalg.eigvals(P)))[::-1]
-    lambda2 = autovalores[1] if len(autovalores) > 1 else 0.0
-    spectral_gap = 1 - float(lambda2)
-    mixing_time_est = int(np.ceil(1.0 / spectral_gap)) if spectral_gap > 0 else 9999
-
-    mc1, mc2, mc3, mc4 = st.columns(4)
-    mc1.metric("Nº de estados", n_est)
-    mc2.metric("λ₂ (2º autovalor)", f"{float(lambda2):.4f}", "espectral")
-    mc3.metric("Spectral gap", f"{spectral_gap:.4f}", "1 − |λ₂|")
-    mc4.metric("Mixing time (est.)", f"~{mixing_time_est} passos", "1/(1−|λ₂|)")
-
-    st.markdown("<div class='hr'></div>", unsafe_allow_html=True)
-
-    # ---------- DISTRIBUIÇÃO ESTACIONÁRIA ----------
-    if pi is not None:
-        st.markdown("**Distribuição Estacionária π**")
-        cols_pi = st.columns(n_est)
-        for i, col in enumerate(cols_pi):
-            col.metric(estados[i], f"{float(pi[i]):.4f}", f"{float(pi[i])*100:.1f}%")
-
-    st.markdown("<div class='hr'></div>", unsafe_allow_html=True)
-
-    # ---------- ABAS INTERNAS ----------
-    tab_grafo, tab_evolucao, tab_sim, tab_diag = st.tabs([
-        "🔵 Grafo da Cadeia",
-        "📊 Evolução Temporal",
-        "🎲 Simulação",
-        "🔬 Diagnósticos",
-    ])
-
-    with tab_grafo:
-        col_g, col_h = st.columns([1.2, 1])
-        with col_g:
-            fig_grafo = make_grafo_markov(estados, P, pi)
-            st.plotly_chart(fig_grafo, use_container_width=True)
-        with col_h:
-            fig_hm = make_heatmap_transicao(P, estados)
-            st.plotly_chart(fig_hm, use_container_width=True)
-
-            # Tabela da matriz
-            df_P = pd.DataFrame(P, index=estados, columns=estados)
-            st.markdown("<div class='small-muted'>Matriz P (numérica):</div>", unsafe_allow_html=True)
-            st.dataframe(df_P.style.format("{:.4f}").background_gradient(
-                cmap="RdYlGn", axis=None, vmin=0, vmax=1
-            ), use_container_width=True)
-
-    with tab_evolucao:
-        fig_ev = make_evolucao_plot(historico, estados, pi)
-        st.plotly_chart(fig_ev, use_container_width=True)
-
-        if pi is not None:
-            # Distância TV no último passo
-            tv_final = 0.5 * np.sum(np.abs(historico[-1] - pi))
-            st.markdown(
-                f"<div class='small-muted'>Distância TV após {n_passos_evolucao} passos: <b>{tv_final:.6f}</b></div>",
-                unsafe_allow_html=True
-            )
-
-        # Tabela do histórico (amostras)
-        df_hist = pd.DataFrame(
-            historico[::max(1, n_passos_evolucao // 20)],
-            columns=estados
-        )
-        df_hist.index.name = "Passo"
-        st.markdown("<div class='small-muted'>Amostras da distribuição μₜ:</div>", unsafe_allow_html=True)
-        st.dataframe(df_hist.style.format("{:.6f}"), use_container_width=True)
-
-    with tab_sim:
-        fig_traj = make_trajetoria_plot(trajetoria, estados)
-        st.plotly_chart(fig_traj, use_container_width=True)
-
-        # Frequência empírica vs estacionária
-        freq_emp = np.bincount(trajetoria, minlength=n_est) / len(trajetoria)
-        df_freq = pd.DataFrame({
-            "Estado": estados,
-            "Freq. Empírica": [f"{v:.4f}" for v in freq_emp],
-            "π (Teórica)": [f"{float(pi[i]):.4f}" for i in range(n_est)] if pi is not None else ["—"] * n_est,
-            "Erro |emp − π|": [f"{abs(freq_emp[i] - float(pi[i])):.4f}" for i in range(n_est)] if pi is not None else ["—"] * n_est,
-        })
-        st.markdown("<div class='small-muted'>Frequência empírica vs distribuição estacionária:</div>", unsafe_allow_html=True)
-        st.dataframe(df_freq, use_container_width=True, hide_index=True)
-
-        st.caption(f"Trajetória: {n_passos_sim} passos | Seed: {int(seed_sim)} | Estado inicial: {estados[estado_inicial_idx]}")
-
-    with tab_diag:
-        if pi is not None:
-            fig_conv = make_convergencia_markov(historico, pi)
-            st.plotly_chart(fig_conv, use_container_width=True)
-
-            # Autovalores
-            autovalores_completos = np.linalg.eigvals(P)
-            df_autos = pd.DataFrame({
-                "Autovalor (Re)": [f"{v.real:.6f}" for v in np.sort(autovalores_completos)[::-1]],
-                "Autovalor (Im)": [f"{v.imag:.6f}" for v in np.sort(autovalores_completos)[::-1]],
-                "|λ|": [f"{abs(v):.6f}" for v in sorted(autovalores_completos, key=abs, reverse=True)],
-            })
-            st.markdown("<div class='small-muted'>Espectro de P (autovalores):</div>", unsafe_allow_html=True)
-            st.dataframe(df_autos, use_container_width=True, hide_index=True)
-
-            # P^k para k crescente
-            st.markdown("<div class='small-muted'>Potências de P (convergência a π):</div>", unsafe_allow_html=True)
-            ks = [1, 2, 5, 10, 20, 50]
-            Pk = np.eye(n_est)
-            linhas = []
-            for k in ks:
-                potencia = np.linalg.matrix_power(P, k)
-                tv_k = 0.5 * np.max(np.abs(potencia - pi[None, :]))
-                linhas.append({"k": k, "max TV(P^k, π)": f"{tv_k:.8f}"})
-            st.dataframe(pd.DataFrame(linhas), use_container_width=True, hide_index=True)
-        else:
-            st.info("Distribuição estacionária não pôde ser calculada para esta cadeia.")
-
-    st.markdown("<div class='hr'></div>", unsafe_allow_html=True)
+# ----------------------------
+# 7) TEORIA COLAPSÁVEL
+# ----------------------------
+with st.expander("Teoria: o que é uma Cadeia de Markov?", expanded=False):
     st.markdown(
-        "<div class='footer'>Cadeias de Markov — The Everything Calculator • Fellipe Almässy</div>",
-        unsafe_allow_html=True
+        "<span class='badge'>Propriedade de Markov</span> "
+        "<span class='badge'>Matriz de Transição</span> "
+        "<span class='badge'>Distribuição Estacionária</span> "
+        "<span class='badge'>Convergência</span>",
+        unsafe_allow_html=True,
     )
+    st.markdown("Uma cadeia de Markov é um processo estocástico com a **propriedade de Markov**:")
+    st.latex(r"\Pr(X_{t+1} = j \mid X_t = i,\, X_{t-1},\, \ldots) = \Pr(X_{t+1} = j \mid X_t = i) = P_{ij}")
+    st.markdown("O futuro depende **apenas do estado presente**, não da história completa.")
+    st.markdown("---")
+    st.markdown("**Matriz de Transição** — cada linha soma 1 (matriz estocástica por linhas):")
+    st.latex(r"P = \begin{bmatrix} P_{11} & P_{12} & \cdots \\ P_{21} & P_{22} & \cdots \\ \vdots & & \ddots \end{bmatrix}, \qquad \sum_j P_{ij} = 1 \; \forall\, i")
+    st.markdown("**Distribuição no passo t** — basta multiplicar à esquerda repetidamente:")
+    st.latex(r"\mu_t = \mu_0 \cdot P^t")
+    st.markdown("**Distribuição Estacionária** — vetor π tal que:")
+    st.latex(r"\pi P = \pi \qquad \Longleftrightarrow \qquad \pi \text{ é autovetor esquerdo de } P \text{ com autovalor } 1")
+    st.markdown("**Teorema Ergódico** — para cadeias irredutíveis e aperiódicas:")
+    st.latex(r"\lim_{t \to \infty} \mu_t = \pi \qquad \text{(independente de } \mu_0\text{)}")
+    st.markdown("A velocidade de convergência é controlada pelo **spectral gap**: $1 - |\\lambda_2|$, onde $\\lambda_2$ é o segundo maior autovalor em módulo.")
+
+st.markdown("<div class='hr'></div>", unsafe_allow_html=True)
+
+
+# ----------------------------
+# 8) SIDEBAR — CONTROLES
+# ----------------------------
+st.sidebar.header("Controles")
+
+exemplo_nome = st.sidebar.selectbox("Exemplo", list(EXEMPLOS_MARKOV.keys()), index=0)
+exemplo = EXEMPLOS_MARKOV[exemplo_nome]
+
+if exemplo_nome == "Personalizado":
+    n_estados = st.sidebar.slider("Nº de estados", 2, 5, 3, key="n_estados")
+    estados_default = [chr(65 + i) for i in range(n_estados)]
+    P_default = np.full((n_estados, n_estados), 1.0 / n_estados)
+    estados_edit = estados_default
+    P_edit = P_default
+else:
+    estados_edit = list(exemplo["estados"])
+    P_edit = exemplo["matriz"].copy()
+    n_estados = len(estados_edit)
+
+n_passos_evolucao = st.sidebar.slider("Passos de evolução", 10, 200, 60, step=5)
+n_passos_sim      = st.sidebar.slider("Passos da simulação", 50, 2000, 300, step=50)
+seed_sim          = st.sidebar.number_input("Seed da simulação", value=42, min_value=0, max_value=9999, step=1)
+
+st.sidebar.markdown("**Distribuição Inicial μ₀**")
+dist_cols = st.sidebar.columns(n_estados)
+dist_inicial_raw = []
+for i, col in enumerate(dist_cols):
+    v = col.number_input(
+        estados_edit[i],
+        min_value=0.0, max_value=1.0,
+        value=round(1.0 / n_estados, 2),
+        step=0.1, format="%.2f",
+        key=f"dist0_{i}",
+    )
+    dist_inicial_raw.append(v)
+
+s = sum(dist_inicial_raw)
+dist_inicial = tuple(v / s for v in dist_inicial_raw) if s > 0 else tuple(1.0 / n_estados for _ in range(n_estados))
+st.sidebar.caption(f"μ₀ normalizado: {[f'{v:.3f}' for v in dist_inicial]}")
+
+estado_inicial_nome = st.sidebar.selectbox("Estado inicial (simulação)", estados_edit)
+estado_inicial_idx  = estados_edit.index(estado_inicial_nome)
+
+st.sidebar.markdown("---")
+st.sidebar.caption("Dica: matrizes com |λ₂| próximo de 1 convergem lentamente — veja nos Diagnósticos.")
+
+
+# ----------------------------
+# 9) EDITOR (modo personalizado) OU DESCRIÇÃO
+# ----------------------------
+if exemplo_nome == "Personalizado":
+    st.markdown("#### Definir Cadeia")
+    estados_edit, P_edit = editor_matriz(estados_edit, P_edit)
+else:
+    st.markdown(f"**{exemplo['emoji']} {exemplo_nome}** — {exemplo['descricao']}")
+
+P      = P_edit
+estados = estados_edit
+mat_tuple = tuple(map(tuple, P))
+
+
+# ----------------------------
+# 10) VALIDAÇÃO
+# ----------------------------
+valido, msg = validar_matriz(mat_tuple)
+if not valido:
+    st.error(f"Matriz inválida: {msg}")
+    st.stop()
+
+
+# ----------------------------
+# 11) COMPUTAÇÕES
+# ----------------------------
+pi        = calcular_estacionaria(mat_tuple)
+historico = evolucao_distribuicao(mat_tuple, dist_inicial, n_passos_evolucao)
+trajetoria = simular_cadeia(mat_tuple, estado_inicial_idx, n_passos_sim, int(seed_sim))
+
+n_est = len(estados)
+autovalores  = np.sort(np.abs(np.linalg.eigvals(P)))[::-1]
+lambda2      = float(autovalores[1]) if len(autovalores) > 1 else 0.0
+spectral_gap = 1.0 - lambda2
+mixing_time  = int(np.ceil(1.0 / spectral_gap)) if spectral_gap > 1e-10 else 9999
+
+
+# ----------------------------
+# 12) MÉTRICAS PRINCIPAIS
+# ----------------------------
+mc1, mc2, mc3, mc4 = st.columns(4)
+mc1.metric("Nº de estados",       str(n_est))
+mc2.metric("λ₂ (2º autovalor)",   f"{lambda2:.4f}",       "espectral")
+mc3.metric("Spectral gap",         f"{spectral_gap:.4f}",  "1 − |λ₂|")
+mc4.metric("Mixing time (est.)",   f"~{mixing_time} passos", "1 / gap")
+
+st.markdown("<div class='hr'></div>", unsafe_allow_html=True)
+
+
+# ----------------------------
+# 13) DISTRIBUIÇÃO ESTACIONÁRIA
+# ----------------------------
+if pi is not None:
+    st.markdown("**Distribuição Estacionária π**")
+    cols_pi = st.columns(n_est)
+    for i, col in enumerate(cols_pi):
+        col.metric(estados[i], f"{float(pi[i]):.4f}", f"{float(pi[i])*100:.1f}%")
+
+st.markdown("<div class='hr'></div>", unsafe_allow_html=True)
+
+
+# ----------------------------
+# 14) ABAS
+# ----------------------------
+tab_grafo, tab_evolucao, tab_sim, tab_diag = st.tabs([
+    "🔵 Grafo da Cadeia",
+    "📊 Evolução Temporal",
+    "🎲 Simulação",
+    "🔬 Diagnósticos",
+])
+
+with tab_grafo:
+    col_g, col_h = st.columns([1.2, 1])
+    with col_g:
+        st.plotly_chart(make_grafo_markov(estados, P, pi), use_container_width=True)
+    with col_h:
+        st.plotly_chart(make_heatmap_transicao(P, estados), use_container_width=True)
+        df_P = pd.DataFrame(P, index=estados, columns=estados)
+        st.markdown("<div class='small-muted'>Matriz P (numérica):</div>", unsafe_allow_html=True)
+        st.dataframe(
+            df_P.style.format("{:.4f}").background_gradient(cmap="RdYlGn", axis=None, vmin=0, vmax=1),
+            use_container_width=True,
+        )
+
+with tab_evolucao:
+    st.plotly_chart(make_evolucao_plot(historico, estados, pi), use_container_width=True)
+
+    if pi is not None:
+        tv_final = 0.5 * float(np.sum(np.abs(historico[-1] - pi)))
+        st.markdown(
+            f"<div class='small-muted'>Distância TV após {n_passos_evolucao} passos: <b>{tv_final:.6f}</b></div>",
+            unsafe_allow_html=True,
+        )
+
+    df_hist = pd.DataFrame(
+        historico[::max(1, n_passos_evolucao // 20)],
+        columns=estados,
+    )
+    df_hist.index = df_hist.index * max(1, n_passos_evolucao // 20)
+    df_hist.index.name = "Passo"
+    st.markdown("<div class='small-muted'>Amostras da distribuição μₜ:</div>", unsafe_allow_html=True)
+    st.dataframe(df_hist.style.format("{:.6f}"), use_container_width=True)
+
+with tab_sim:
+    st.plotly_chart(make_trajetoria_plot(trajetoria, estados), use_container_width=True)
+
+    freq_emp = np.bincount(trajetoria, minlength=n_est) / len(trajetoria)
+    df_freq = pd.DataFrame({
+        "Estado":          estados,
+        "Freq. Empírica":  [f"{v:.4f}" for v in freq_emp],
+        "π (Teórica)":     [f"{float(pi[i]):.4f}" for i in range(n_est)] if pi is not None else ["—"] * n_est,
+        "Erro |emp − π|":  [f"{abs(freq_emp[i] - float(pi[i])):.4f}" for i in range(n_est)] if pi is not None else ["—"] * n_est,
+    })
+    st.markdown("<div class='small-muted'>Frequência empírica vs distribuição estacionária:</div>", unsafe_allow_html=True)
+    st.dataframe(df_freq, use_container_width=True, hide_index=True)
+    st.caption(f"Trajetória: {n_passos_sim} passos | Seed: {int(seed_sim)} | Estado inicial: {estados[estado_inicial_idx]}")
+
+with tab_diag:
+    if pi is not None:
+        st.plotly_chart(make_convergencia_markov(historico, pi), use_container_width=True)
+
+        autovalores_full = np.linalg.eigvals(P)
+        df_autos = pd.DataFrame({
+            "Autovalor (Re)": [f"{v.real:.6f}" for v in sorted(autovalores_full, key=abs, reverse=True)],
+            "Autovalor (Im)": [f"{v.imag:.6f}" for v in sorted(autovalores_full, key=abs, reverse=True)],
+            "|λ|":            [f"{abs(v):.6f}"  for v in sorted(autovalores_full, key=abs, reverse=True)],
+        })
+        st.markdown("<div class='small-muted'>Espectro de P (autovalores):</div>", unsafe_allow_html=True)
+        st.dataframe(df_autos, use_container_width=True, hide_index=True)
+
+        st.markdown("<div class='small-muted'>Potências de P — convergência a π:</div>", unsafe_allow_html=True)
+        linhas = []
+        for k in [1, 2, 5, 10, 20, 50]:
+            Pk = np.linalg.matrix_power(P, k)
+            tv_k = 0.5 * float(np.max(np.abs(Pk - pi[None, :])))
+            linhas.append({"k": k, "max TV(Pᵏ, π)": f"{tv_k:.8f}"})
+        st.dataframe(pd.DataFrame(linhas), use_container_width=True, hide_index=True)
+    else:
+        st.info("Distribuição estacionária não pôde ser calculada para esta cadeia.")
+
+
+# ----------------------------
+# 15) RODAPÉ
+# ----------------------------
+st.markdown("<div class='hr'></div>", unsafe_allow_html=True)
+st.markdown(
+    "<div class='footer'>Cadeias de Markov — The Everything Calculator • Fellipe Almässy</div>",
+    unsafe_allow_html=True,
+)
