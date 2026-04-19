@@ -100,7 +100,7 @@ The-Everything-Calculator/
 
 ## Author
 
-**Fellipe Almässy** — Computer Engineering student at UAM, São Paulo.
+**Fellipe Almässy** — Computer Engineering and Applied Maths student at Prandiano Mathematics Museum in São Paulo.
 Focused on applied mathematics and data science.
 
 [![GitHub](https://img.shields.io/badge/GitHub-FeAlmassy-black?logo=github)](https://github.com/FeAlmassy)
