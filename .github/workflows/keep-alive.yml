@@ -1,0 +1,13 @@
+name: Keep TEC Alive
+
+on:
+  schedule:
+    - cron: '*/15 * * * *' 
+  workflow_dispatch:  
+  
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping TEC
+        run: curl -s -o /dev/null -w "%{http_code}" https://theeverythingcalculator.streamlit.app/
