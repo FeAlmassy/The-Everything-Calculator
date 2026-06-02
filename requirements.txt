@@ -4,3 +4,4 @@ pandas
 sympy
 plotly
 scipy
+openpyxl
