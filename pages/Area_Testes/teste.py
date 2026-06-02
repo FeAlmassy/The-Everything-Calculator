@@ -8,12 +8,16 @@
 # - Geração de dados sintéticos no padrão CredituS OU upload de planilha (.xlsx)
 # - Diagnósticos: convergência + matriz de confusão + distribuição de Q + roleta
 
+import io
 import time
 
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
+from openpyxl import Workbook
+from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+from openpyxl.worksheet.datavalidation import DataValidation
 
 
 # ----------------------------
@@ -188,33 +192,40 @@ def atualizar_populacao(
 def algoritmo_genetico(
     array_dados_clientes: np.ndarray,
     array_gabarito: np.ndarray,
-    qtd_cromossomos: int = 6,
+    qtd_cromossomos: int = 12,
     geracoes: int = 500,
     fitness_alvo: float = 0.90,
+    cruzamentos_por_geracao: int = 3,
     seed: int = 42,
 ) -> dict:
-    """Loop evolutivo. Retorna o melhor cromossomo, o fitness e o histórico de convergência."""
+    """
+    Loop evolutivo (esquema μ+λ elitista).
+
+    A cada geração:
+      1. avalia o fitness da população;
+      2. realiza 'cruzamentos_por_geracao' cruzamentos (cada um: roleta -> 3 filhos -> mutação);
+      3. junta população + prole e mantém os 'qtd_cromossomos' melhores (truncamento elitista).
+
+    Mais cruzamentos por geração => mais prole => convergência mais rápida em bancos grandes.
+    O elitismo garante que o melhor fitness nunca regride.
+    """
     np.random.seed(seed)
 
     qtd_genes = array_dados_clientes.shape[1] + 1  # features + bias
     populacao = criar_cromossomos(qtd_cromossomos, qtd_genes)
+    fitnesses = calcular_fitness(populacao, array_dados_clientes, array_gabarito)
 
-    melhor_cromossomo = populacao[0].copy()
-    melhor_fitness = -1.0
+    melhor_cromossomo = populacao[int(np.argmax(fitnesses))].copy()
+    melhor_fitness = float(np.max(fitnesses))
 
     hist_melhor = []
     hist_media = []
     geracao_convergencia = geracoes
 
     for geracao in range(geracoes):
-        fitnesses = calcular_fitness(populacao, array_dados_clientes, array_gabarito)
-        percentuais = fitness_percentual(fitnesses)
-
         idx_melhor = int(np.argmax(fitnesses))
-        fitness_atual = float(fitnesses[idx_melhor])
-
-        if fitness_atual > melhor_fitness:
-            melhor_fitness = fitness_atual
+        if fitnesses[idx_melhor] > melhor_fitness:
+            melhor_fitness = float(fitnesses[idx_melhor])
             melhor_cromossomo = populacao[idx_melhor].copy()
 
         hist_melhor.append(melhor_fitness)
@@ -224,13 +235,24 @@ def algoritmo_genetico(
             geracao_convergencia = geracao + 1
             break
 
-        pai, mae = selecionar_pais_roleta(populacao, percentuais)
-        filho1, filho2, filho3 = cruzar_pais(pai, mae)
-        filho1, filho2, filho3 = mutar(filho1, filho2, filho3)
-        populacao = atualizar_populacao(
-            populacao, fitnesses, filho1, filho2, filho3,
-            array_dados_clientes, array_gabarito,
-        )
+        # ---- gera a prole com vários cruzamentos ----
+        percentuais = fitness_percentual(fitnesses)
+        prole = []
+        for _ in range(cruzamentos_por_geracao):
+            pai, mae = selecionar_pais_roleta(populacao, percentuais)
+            filho1, filho2, filho3 = cruzar_pais(pai, mae)
+            filho1, filho2, filho3 = mutar(filho1, filho2, filho3)
+            prole.extend([filho1, filho2, filho3])
+
+        prole = np.array(prole)
+        fitness_prole = calcular_fitness(prole, array_dados_clientes, array_gabarito)
+
+        # ---- sobrevivência elitista: melhores de (população + prole) ----
+        todos = np.vstack([populacao, prole])
+        fitness_todos = np.concatenate([fitnesses, fitness_prole])
+        ordem = np.argsort(fitness_todos)[::-1][:qtd_cromossomos]
+        populacao = todos[ordem]
+        fitnesses = fitness_todos[ordem]
 
     return {
         "melhor_cromossomo": melhor_cromossomo,
@@ -239,7 +261,7 @@ def algoritmo_genetico(
         "hist_media": np.array(hist_media, dtype=float),
         "geracao_convergencia": int(geracao_convergencia),
         "populacao_final": populacao,
-        "fitness_final": calcular_fitness(populacao, array_dados_clientes, array_gabarito),
+        "fitness_final": fitnesses,
     }
 
 
@@ -326,6 +348,119 @@ def normalizar_gabarito(coluna: pd.Series) -> np.ndarray:
             lambda v: 1 if str(v).strip().upper() in {"A", "1", "ADIMPLENTE"} else 0
         ).to_numpy()
     return (coluna.to_numpy() >= 1).astype(int)
+
+
+@st.cache_data(show_spinner=False)
+def construir_template_xlsx() -> bytes:
+    """Gera, em memória, a planilha-modelo do CredituS (abas Dados, Legenda, Instruções)."""
+    NAVY, LIGHT, GREEN, RED = "1F2A44", "EEF1F7", "DDF3E6", "F8E0E0"
+
+    wb = Workbook()
+    head_font = Font(name="Arial", bold=True, color="FFFFFF", size=11)
+    head_fill = PatternFill("solid", fgColor=NAVY)
+    body_font = Font(name="Arial", size=10)
+    center = Alignment(horizontal="center", vertical="center")
+    thin = Side(style="thin", color="C9D2E0")
+    border = Border(left=thin, right=thin, top=thin, bottom=thin)
+
+    # ---- Aba Dados ----
+    ws = wb.active
+    ws.title = "Dados"
+    cols_x = []
+    for a in range(1, 10):
+        cols_x += [f"X{a}1", f"X{a}2"]
+    headers = ["ID"] + cols_x + ["Classe (A/I)"]
+    ws.append(headers)
+    for c in range(1, len(headers) + 1):
+        cell = ws.cell(row=1, column=c)
+        cell.font, cell.fill, cell.alignment, cell.border = head_font, head_fill, center, border
+
+    exemplos = [
+        [1, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0, "A"],
+        [2, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0, "A"],
+        [3, 1, 0, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, "I"],
+        [4, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 1, 0, 1, 0, 0, 1, 0, 1, "I"],
+        [5, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, "I"],
+    ]
+    for row in exemplos:
+        ws.append(row)
+    for r in range(2, 2 + len(exemplos)):
+        for c in range(1, len(headers) + 1):
+            cell = ws.cell(row=r, column=c)
+            cell.font, cell.alignment, cell.border = body_font, center, border
+            if c == len(headers):
+                cell.fill = PatternFill("solid", fgColor=GREEN if cell.value == "A" else RED)
+
+    dv01 = DataValidation(type="list", formula1='"0,1"', allow_blank=True,
+                          showErrorMessage=True, error="Use apenas 0 ou 1.")
+    ws.add_data_validation(dv01)
+    dv01.add("B2:S1000")
+    dvAI = DataValidation(type="list", formula1='"A,I"', allow_blank=True,
+                          showErrorMessage=True, error="Use A (Adimplente) ou I (Inadimplente).")
+    ws.add_data_validation(dvAI)
+    dvAI.add("T2:T1000")
+
+    ws.column_dimensions["A"].width = 6
+    for i in range(18):
+        ws.column_dimensions[chr(ord("B") + i)].width = 6
+    ws.column_dimensions["T"].width = 14
+    ws.freeze_panes = "A2"
+
+    # ---- Aba Legenda ----
+    leg = wb.create_sheet("Legenda")
+    leg.append(["Atributo", "Variavel", "Significado"])
+    for c in range(1, 4):
+        cell = leg.cell(row=1, column=c)
+        cell.font, cell.fill, cell.alignment, cell.border = head_font, head_fill, center, border
+    legenda = [
+        ("Sexo", "X11", "Avaliado do sexo masculino"), ("Sexo", "X12", "Avaliado do sexo feminino"),
+        ("Idade", "X21", "Idade do cliente <= 30 anos"), ("Idade", "X22", "Idade do cliente > 30 anos"),
+        ("CEP", "X31", "CEP comercial (Faixa A)"), ("CEP", "X32", "CEP comercial (Faixa B)"),
+        ("Emprego", "X41", "Tempo no emprego <= 2 anos"), ("Emprego", "X42", "Tempo no emprego > 2 anos"),
+        ("Moradia", "X51", "Tempo de moradia <= 1 ano"), ("Moradia", "X52", "Tempo de moradia > 1 ano"),
+        ("Uniao", "X61", "Estado civil (casado)"), ("Uniao", "X62", "Estado civil (solteiro)"),
+        ("Atividade", "X71", "Trabalhador tec. mecanico"), ("Atividade", "X72", "Trabalhador tec. comercial"),
+        ("Valor", "X81", "Valor do emprestimo <= 30 u.m"), ("Valor", "X82", "Valor do emprestimo > 30 u.m"),
+        ("Parcelas", "X91", "Numero de parcelas <= 10"), ("Parcelas", "X92", "Numero de parcelas > 10"),
+    ]
+    for i, row in enumerate(legenda):
+        leg.append(list(row))
+        for c in range(1, 4):
+            cell = leg.cell(row=i + 2, column=c)
+            cell.font, cell.border = body_font, border
+            cell.alignment = Alignment(vertical="center", horizontal="center" if c < 3 else "left")
+            if (i // 2) % 2 == 0:
+                cell.fill = PatternFill("solid", fgColor=LIGHT)
+    leg.column_dimensions["A"].width = 12
+    leg.column_dimensions["B"].width = 10
+    leg.column_dimensions["C"].width = 36
+    leg.freeze_panes = "A2"
+
+    # ---- Aba Instruções ----
+    ins = wb.create_sheet("Instrucoes")
+    ins.column_dimensions["A"].width = 100
+    linhas = [
+        ("Como preencher o template CredituS", Font(name="Arial", bold=True, size=13, color=NAVY)),
+        ("", body_font),
+        ("1) Cada linha = um cliente do banco de dados.", body_font),
+        ("2) Coluna ID: identificador livre. E ignorada pelo modelo.", body_font),
+        ("3) Colunas X11..X92: variaveis binarias (0 ou 1). Veja a aba 'Legenda'.", body_font),
+        ("   Regra das nuances: em cada par (Xa1, Xa2) exatamente UM vale 1 (one-hot).", body_font),
+        ("   Ex.: homem -> X11=1, X12=0 ; mulher -> X11=0, X12=1.", body_font),
+        ("4) Coluna Classe: A = Adimplente (pagou) ; I = Inadimplente (nao pagou).", body_font),
+        ("5) Quanto mais clientes e mais equilibrio entre A e I, melhor o treino.", body_font),
+        ("6) Salve em .xlsx e suba aqui na pagina 'Algoritmo Genetico'.", body_font),
+        ("", body_font),
+        ("Obs.: linhas incompletas (celulas vazias) sao descartadas no carregamento.", body_font),
+    ]
+    for i, (t, f) in enumerate(linhas):
+        cell = ins.cell(row=i + 1, column=1, value=t)
+        cell.font = f
+        cell.alignment = Alignment(wrap_text=True, vertical="center")
+
+    buffer = io.BytesIO()
+    wb.save(buffer)
+    return buffer.getvalue()
 
 
 # ----------------------------
@@ -585,6 +720,16 @@ st.markdown("<div class='hr'></div>", unsafe_allow_html=True)
 # ----------------------------
 st.sidebar.header("Controles")
 
+st.sidebar.download_button(
+    "⬇ Baixar template (.xlsx)",
+    data=construir_template_xlsx(),
+    file_name="CredituS_template.xlsx",
+    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    use_container_width=True,
+)
+st.sidebar.caption("Preencha o modelo e suba abaixo.")
+st.sidebar.markdown("---")
+
 fonte = st.sidebar.radio(
     "Fonte de dados",
     ["Gerar dados sintéticos (padrão CredituS)", "Enviar planilha (.xlsx)"],
@@ -598,14 +743,26 @@ nomes = nomes_colunas()
 
 if fonte.startswith("Enviar"):
     up = st.sidebar.file_uploader("Planilha de clientes", type=["xlsx", "xls"])
-    st.sidebar.caption("1ª coluna = índice (ignorada) • última coluna = gabarito (A=1 / I=0).")
+    st.sidebar.caption("1ª coluna = índice (ignorada) • última coluna = gabarito (A / I).")
     if up is not None:
         try:
             df = pd.read_excel(up)
-            features = df.iloc[:, 1:-1].to_numpy(dtype=float)
-            gabarito = normalizar_gabarito(df.iloc[:, -1])
+            df_features = df.iloc[:, 1:-1].apply(pd.to_numeric, errors="coerce")
+            serie_gab = df.iloc[:, -1]
+            # descarta linhas incompletas (features vazias ou gabarito ausente)
+            mascara = df_features.notna().all(axis=1) & serie_gab.notna()
+            n_descartadas = int((~mascara).sum())
+            df_features = df_features[mascara]
+            serie_gab = serie_gab[mascara]
+
+            features = df_features.to_numpy(dtype=float)
+            gabarito = normalizar_gabarito(serie_gab)
             nomes = list(df.iloc[:, 1:-1].columns.astype(str))
-            dados_ok = True
+            dados_ok = len(gabarito) > 0
+            if n_descartadas:
+                st.sidebar.warning(f"{n_descartadas} linha(s) incompleta(s) descartada(s).")
+            if not dados_ok:
+                st.sidebar.error("Nenhuma linha completa encontrada na planilha.")
         except Exception as e:
             st.sidebar.error(f"Falha ao ler a planilha: {e}")
 else:
@@ -618,11 +775,15 @@ else:
 st.sidebar.markdown("---")
 st.sidebar.subheader("Evolução")
 qtd_cromossomos = st.sidebar.slider("Tamanho da população", 4, 50, 12, step=1)
+cruzamentos = st.sidebar.slider("Cruzamentos por geração", 1, 20, 3, step=1)
 geracoes = st.sidebar.slider("Máx. de gerações", 50, 2000, 500, step=50)
 fitness_alvo = st.sidebar.slider("Fitness alvo", 0.50, 0.99, 0.85, step=0.01)
 seed_ga = st.sidebar.number_input("Seed da evolução", value=42, step=1)
 
-st.sidebar.caption("Didaticamente, o curso usa 6 cromossomos (Adão, Eva, Fábio, Abel, Sara, Caio).")
+st.sidebar.caption(
+    "Cada cruzamento gera 3 filhos. Mais cruzamentos → convergência mais rápida. "
+    "O curso é didático com 6 cromossomos e 1 cruzamento."
+)
 st.sidebar.markdown("---")
 rodar = st.sidebar.button("▶ Rodar evolução", use_container_width=True, type="primary")
 
@@ -667,6 +828,7 @@ if rodar:
             qtd_cromossomos=qtd_cromossomos,
             geracoes=geracoes,
             fitness_alvo=fitness_alvo,
+            cruzamentos_por_geracao=cruzamentos,
             seed=int(seed_ga),
         )
         res["runtime"] = time.time() - t0
@@ -714,6 +876,18 @@ with tab_motor:
     st.caption(
         "Barras verdes = peso positivo (empurra para Adimplente), "
         "vermelhas = peso negativo (empurra para Inadimplente)."
+    )
+
+    rotulos_genes = ["b0 (bias)"] + [f"b{a}{n}" for a in range(1, 10) for n in (1, 2)]
+    df_chromo = pd.DataFrame({
+        "gene": rotulos_genes[:len(res["melhor_cromossomo"])],
+        "peso": res["melhor_cromossomo"],
+    })
+    st.download_button(
+        "⬇ Baixar cromossomo treinado (.csv)",
+        data=df_chromo.to_csv(index=False).encode("utf-8"),
+        file_name="cromossomo_treinado.csv",
+        mime="text/csv",
     )
 
 with tab_diag:
