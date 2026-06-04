@@ -10,8 +10,8 @@ pg = st.navigation({
         st.Page("pages/Calculo/limiteV2.py",    title="Limites V2",  icon="✨"),
         st.Page("pages/Calculo/limiteV3.py",    title="Limites V3",  icon="✨"),
     ],
-    "Álgebra Linear": [
-        st.Page("pages/Algebra_Linear/Vetores.py", title="Vetores", icon="📊"),
+    "Machine Learning": [
+        st.Page("pages/MachineLearning/Perceptron.py", title="Perceptron", icon="📊"),
 
     ],
     "AREA DE TESTES": [
